@@ -10,10 +10,10 @@ import (
 // TODO: Move global state into a central structure
 
 const (
-	numberOfCubePoints        = 9 * 9 * 9
-	fovFactor                 = 640
-	FPS                       = 30
-	frameTargetTime    uint64 = 1000 / FPS
+	fovFactor              = 640
+	FPS                    = 30
+	frameTargetTime uint64 = 1000 / FPS
+	nMeshVertices          = 8
 )
 
 var (
@@ -21,11 +21,10 @@ var (
 	windowHeight       = 600
 	colorBuffer        []uint32
 	colorBufferTexture *sdl.Texture
-	cubePoints         [numberOfCubePoints]vec3
-	projectedPoints    [numberOfCubePoints]vec2
 	cameraPosition     vec3   = vec3{0, 0, -5}
 	cubeRotation       vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
+	trianglesToRender  [nMeshFaces]triangle
 )
 
 func setup(r *sdl.Renderer) error {
@@ -35,24 +34,15 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	pointCount := 0
-	cubePoints = [numberOfCubePoints]vec3{}
-	for x := -1.0; x <= 1; x += 0.25 {
-		for y := -1.0; y <= 1; y += 0.25 {
-			for z := -1.0; z <= 1.0; z += 0.25 {
-				newPoint := vec3{x, y, z}
-				cubePoints[pointCount] = newPoint
-				pointCount++
-			}
-		}
-	}
 	return nil
 }
 
 func render(r *sdl.Renderer) error {
-	for i := 0; i < numberOfCubePoints; i++ {
-		projectedPoint := projectedPoints[i]
-		drawRectangle(int(projectedPoint.X)+int(windowWidth/2), int(projectedPoint.Y)+int(windowHeight/2), 4, 4, 0xFFFFFF00)
+	for i := 0; i < nMeshFaces; i++ {
+		triangle := trianglesToRender[i]
+		drawRectangle(int(triangle.points[0].X), int(triangle.points[0].Y), 3, 3, 0xFFFFFF00)
+		drawRectangle(int(triangle.points[1].X), int(triangle.points[1].Y), 3, 3, 0xFFFFFF00)
+		drawRectangle(int(triangle.points[2].X), int(triangle.points[2].Y), 3, 3, 0xFFFFFF00)
 	}
 	err := renderColorBuffer(r)
 	if err != nil {
@@ -81,17 +71,33 @@ func update() {
 	cubeRotation.X += 0.01
 	cubeRotation.Z += 0.01
 
-	for i := 0; i < numberOfCubePoints; i++ {
-		point := cubePoints[i]
-		// Simulate moving away from the camera
-		point.rotateY(cubeRotation.Y)
-		point.rotateX(cubeRotation.X)
-		point.rotateZ(cubeRotation.Z)
-		point.Z -= cameraPosition.Z
-		projectedPoint := project(point)
-		projectedPoints[i] = projectedPoint
+	for i := 0; i < nMeshFaces; i++ {
+		// Face index into the vertices array
+		face := meshFaces[i]
+		facesVertices := make([]vec3, 3)
+		facesVertices[0] = meshVertices[face.a-1]
+		facesVertices[1] = meshVertices[face.b-1]
+		facesVertices[2] = meshVertices[face.c-1]
+		var projectedTriangle triangle
+		for j := 0; j < 3; j++ {
+			transformedVertex := facesVertices[j]
+			transformedVertex.rotateY(cubeRotation.Y)
+			transformedVertex.rotateX(cubeRotation.X)
+			transformedVertex.rotateZ(cubeRotation.Z)
+
+			transformedVertex.Z -= cameraPosition.Z
+
+			projectedPoint := project(transformedVertex)
+
+			projectedPoint.X += float64(windowWidth / 2)
+			projectedPoint.Y += float64(windowHeight / 2)
+
+			projectedTriangle.points[j] = projectedPoint
+		}
+		trianglesToRender[i] = projectedTriangle
 
 	}
+
 }
 
 func processInput(running *bool) {
