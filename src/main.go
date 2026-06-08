@@ -22,6 +22,7 @@ var (
 	cubePoints         [numberOfCubePoints]vec3
 	projectedPoints    [numberOfCubePoints]vec2
 	cameraPosition     vec3 = vec3{0, 0, -5}
+	cubeRotation       vec3 = vec3{0, 0, 0}
 )
 
 func setup(r *sdl.Renderer) error {
@@ -67,9 +68,16 @@ func project(point vec3) (projectedPoint vec2) {
 }
 
 func update() {
+	cubeRotation.Y += 0.01
+	cubeRotation.X += 0.01
+	cubeRotation.Z += 0.01
+
 	for i := 0; i < numberOfCubePoints; i++ {
 		point := cubePoints[i]
 		// Simulate moving away from the camera
+		point.rotateY(cubeRotation.Y)
+		point.rotateX(cubeRotation.X)
+		point.rotateZ(cubeRotation.Z)
 		point.Z -= cameraPosition.Z
 		projectedPoint := project(point)
 		projectedPoints[i] = projectedPoint
