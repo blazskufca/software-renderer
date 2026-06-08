@@ -3,53 +3,26 @@ package main
 import (
 	"fmt"
 	"log"
-	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
 
 // TODO: Move global state into a central structure
 
+const (
+	numberOfCubePoints = 9 * 9 * 9
+	fovFactor          = 640
+)
+
 var (
 	windowWidth        = 800
 	windowHeight       = 600
 	colorBuffer        []uint32
 	colorBufferTexture *sdl.Texture
+	cubePoints         [numberOfCubePoints]vec3
+	projectedPoints    [numberOfCubePoints]vec2
+	cameraPosition     vec3 = vec3{0, 0, -5}
 )
-
-func initializeWindow() (*sdl.Window, *sdl.Renderer, error) {
-	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 with error: %w", err)
-	}
-	dm, err := sdl.GetCurrentDisplayMode(0)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get the current display mode: %w", err)
-	}
-	windowHeight = int(dm.H)
-	windowWidth = int(dm.W)
-	window, err := sdl.CreateWindow("3D renderer", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(windowWidth), int32(windowHeight), sdl.WINDOW_BORDERLESS)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 window with error: %w", err)
-	}
-	if window == nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 window")
-	}
-
-	// Index -1 tells SDL2 to get a default screen device
-	// Flags 0 means no flags
-	r, err := sdl.CreateRenderer(window, -1, 0)
-	if err != nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 render with error: %w", err)
-	}
-	if r == nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 render")
-	}
-	err = window.SetFullscreen(sdl.WINDOW_FULLSCREEN)
-	if err != nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 fullscreen with error: %w", err)
-	}
-	return window, r, nil
-}
 
 func setup(r *sdl.Renderer) error {
 	var err error
@@ -58,72 +31,50 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	return nil
-}
-
-func drawGrid() {
-	for y := 0; y < windowHeight; y++ {
-		for x := 0; x < windowWidth; x++ {
-			if y%10 == 0 || x%10 == 0 {
-				colorBuffer[(y*windowWidth)+x] = 0xFF333333
+	pointCount := 0
+	cubePoints = [numberOfCubePoints]vec3{}
+	for x := -1.0; x <= 1; x += 0.25 {
+		for y := -1.0; y <= 1; y += 0.25 {
+			for z := -1.0; z <= 1.0; z += 0.25 {
+				newPoint := vec3{x, y, z}
+				cubePoints[pointCount] = newPoint
+				pointCount++
 			}
 		}
 	}
-}
-
-func drawRectangle(x, y, w, h int, color uint32) {
-	for currentY := y; currentY < (h + y); currentY++ {
-		for currentX := x; currentX < (w + x); currentX++ {
-			colorBuffer[currentY*windowWidth+currentX] = color
-		}
-	}
-}
-
-func update() {}
-
-func clearColorBuffer(newColor uint32) {
-	for y := 0; y < windowHeight; y++ {
-		for x := 0; x < windowWidth; x++ {
-			colorBuffer[(y*windowWidth)+x] = newColor
-		}
-	}
-}
-
-func renderColorBuffer(r *sdl.Renderer) error {
-	err := colorBufferTexture.Update(
-		nil,
-		unsafe.Pointer(&colorBuffer[0]),
-		windowWidth*int(unsafe.Sizeof(uint32(0))),
-	)
-	if err != nil {
-		return err
-	}
-
-	err = r.Copy(colorBufferTexture, nil, nil)
-	if err != nil {
-		return err
-	}
-
 	return nil
 }
 
 func render(r *sdl.Renderer) error {
-	err := r.SetDrawColor(255, 0, 0, 0)
+	for i := 0; i < numberOfCubePoints; i++ {
+		projectedPoint := projectedPoints[i]
+		drawRectangle(int(projectedPoint.X)+int(windowWidth/2), int(projectedPoint.Y)+int(windowHeight/2), 4, 4, 0xFFFFFF00)
+	}
+	err := renderColorBuffer(r)
 	if err != nil {
 		return err
-	}
-	err = r.Clear()
-	if err != nil {
-		return err
-	}
-	drawRectangle(0, 50, 20000, 50, 0xFFFF0000)
-	err = renderColorBuffer(r)
-	if err != nil {
-
 	}
 	clearColorBuffer(0xFF000000)
 	r.Present()
 	return nil
+}
+
+func project(point vec3) (projectedPoint vec2) {
+	// To get perspective projection you follow the formula
+	// P'y = Py/Pz and P'x = Px/Pz, where P'y and P'x are the projected points
+	projectedPoint = vec2{X: (point.X * fovFactor) / point.Z, Y: point.Y * fovFactor / point.Z}
+	return projectedPoint
+}
+
+func update() {
+	for i := 0; i < numberOfCubePoints; i++ {
+		point := cubePoints[i]
+		// Simulate moving away from the camera
+		point.Z -= cameraPosition.Z
+		projectedPoint := project(point)
+		projectedPoints[i] = projectedPoint
+
+	}
 }
 
 func processInput(running *bool) {
@@ -156,6 +107,7 @@ func main() {
 	running := true
 	for running {
 		processInput(&running)
+		update()
 		err := render(r)
 		if err != nil {
 			log.Fatal(err)
