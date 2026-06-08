@@ -10,8 +10,10 @@ import (
 // TODO: Move global state into a central structure
 
 const (
-	numberOfCubePoints = 9 * 9 * 9
-	fovFactor          = 640
+	numberOfCubePoints        = 9 * 9 * 9
+	fovFactor                 = 640
+	FPS                       = 30
+	frameTargetTime    uint64 = 1000 / FPS
 )
 
 var (
@@ -21,8 +23,9 @@ var (
 	colorBufferTexture *sdl.Texture
 	cubePoints         [numberOfCubePoints]vec3
 	projectedPoints    [numberOfCubePoints]vec2
-	cameraPosition     vec3 = vec3{0, 0, -5}
-	cubeRotation       vec3 = vec3{0, 0, 0}
+	cameraPosition     vec3   = vec3{0, 0, -5}
+	cubeRotation       vec3   = vec3{0, 0, 0}
+	previousFrameTime  uint64 = 0
 )
 
 func setup(r *sdl.Renderer) error {
@@ -68,6 +71,12 @@ func project(point vec3) (projectedPoint vec2) {
 }
 
 func update() {
+	timeToWait := frameTargetTime - (sdl.GetTicks64() - previousFrameTime)
+
+	if timeToWait > 0 && timeToWait <= frameTargetTime {
+		sdl.Delay(uint32(timeToWait))
+	}
+	previousFrameTime = sdl.GetTicks64()
 	cubeRotation.Y += 0.01
 	cubeRotation.X += 0.01
 	cubeRotation.Z += 0.01
@@ -120,5 +129,6 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
+
 	}
 }
