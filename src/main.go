@@ -10,10 +10,10 @@ import (
 // TODO: Move global state into a central structure
 
 const (
-	fovFactor              = 640
-	FPS                    = 30
-	frameTargetTime uint64 = 1000 / FPS
-	nMeshVertices          = 8
+	fovFactor                = 640
+	FPS                      = 30
+	frameTargetTime   uint64 = 1000 / FPS
+	cubeNMeshVertices        = 8
 )
 
 var (
@@ -22,9 +22,8 @@ var (
 	colorBuffer        []uint32
 	colorBufferTexture *sdl.Texture
 	cameraPosition     vec3   = vec3{0, 0, -5}
-	cubeRotation       vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
-	trianglesToRender  [nMeshFaces]triangle
+	trianglesToRender  []triangle
 )
 
 func setup(r *sdl.Renderer) error {
@@ -34,11 +33,12 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
+	currentMesh = newCubeMesh()
 	return nil
 }
 
 func render(r *sdl.Renderer) error {
-	for i := 0; i < nMeshFaces; i++ {
+	for i := 0; i < len(trianglesToRender); i++ {
 		triangle := trianglesToRender[i]
 		drawRectangle(triangle.points[0].X, triangle.points[0].Y, 3, 3, 0xFFFFFF00)
 		drawRectangle(triangle.points[1].X, triangle.points[1].Y, 3, 3, 0xFFFFFF00)
@@ -55,6 +55,7 @@ func render(r *sdl.Renderer) error {
 	}
 	clearColorBuffer(0xFF000000)
 	r.Present()
+	trianglesToRender = make([]triangle, cubeNMeshVertices)
 	return nil
 }
 
@@ -71,35 +72,37 @@ func update() {
 	if timeToWait > 0 && timeToWait <= frameTargetTime {
 		sdl.Delay(uint32(timeToWait))
 	}
+	trianglesToRender = make([]triangle, cubeNMeshVertices)
 	previousFrameTime = sdl.GetTicks64()
-	cubeRotation.Y += 0.01
-	cubeRotation.X += 0.01
-	cubeRotation.Z += 0.01
+	currentMesh.rotation.Y += 0.01
+	currentMesh.rotation.X += 0.01
+	currentMesh.rotation.Z += 0.01
 
-	for i := 0; i < nMeshFaces; i++ {
+	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
-		face := meshFaces[i]
+		face := currentMesh.faces[i]
 		facesVertices := make([]vec3, 3)
-		facesVertices[0] = meshVertices[face.a-1]
-		facesVertices[1] = meshVertices[face.b-1]
-		facesVertices[2] = meshVertices[face.c-1]
+		facesVertices[0] = currentMesh.vertices[face.a-1]
+		facesVertices[1] = currentMesh.vertices[face.b-1]
+		facesVertices[2] = currentMesh.vertices[face.c-1]
 		var projectedTriangle triangle
 		for j := 0; j < 3; j++ {
 			transformedVertex := facesVertices[j]
-			transformedVertex.rotateY(cubeRotation.Y)
-			transformedVertex.rotateX(cubeRotation.X)
-			transformedVertex.rotateZ(cubeRotation.Z)
+			transformedVertex.rotateY(currentMesh.rotation.Y)
+			transformedVertex.rotateX(currentMesh.rotation.X)
+			transformedVertex.rotateZ(currentMesh.rotation.Z)
 
 			transformedVertex.Z -= cameraPosition.Z
 
 			projectedPoint := project(transformedVertex)
 
+			// Transpose to center of viewport on both axis
 			projectedPoint.X += windowWidth / 2
 			projectedPoint.Y += windowHeight / 2
 
 			projectedTriangle.points[j] = projectedPoint
 		}
-		trianglesToRender[i] = projectedTriangle
+		trianglesToRender = append(trianglesToRender, projectedTriangle)
 
 	}
 
