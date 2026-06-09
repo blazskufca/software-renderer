@@ -33,7 +33,10 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh = newCubeMesh()
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	if err != nil {
+		return fmt.Errorf("failed to load obj: %w", err)
+	}
 	return nil
 }
 
@@ -55,10 +58,11 @@ func render(r *sdl.Renderer) error {
 	}
 	clearColorBuffer(0xFF000000)
 	r.Present()
-	trianglesToRender = make([]triangle, cubeNMeshVertices)
+	trianglesToRender = nil
 	return nil
 }
 
+// project applies perspective projection to vec3 point
 func project(point vec3) (projectedPoint vec2) {
 	// To get perspective projection you follow the formula
 	// P'y = Py/Pz and P'x = Px/Pz, where P'y and P'x are the projected points
@@ -72,7 +76,7 @@ func update() {
 	if timeToWait > 0 && timeToWait <= frameTargetTime {
 		sdl.Delay(uint32(timeToWait))
 	}
-	trianglesToRender = make([]triangle, cubeNMeshVertices)
+	trianglesToRender = make([]triangle, 0, len(currentMesh.faces))
 	previousFrameTime = sdl.GetTicks64()
 	currentMesh.rotation.Y += 0.01
 	currentMesh.rotation.X += 0.01

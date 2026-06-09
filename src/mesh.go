@@ -1,5 +1,14 @@
 package main
 
+import (
+	"bufio"
+	"fmt"
+	"log"
+	"os"
+	"strconv"
+	"strings"
+)
+
 const (
 	nCubeFaces = 6 * 2
 )
@@ -54,4 +63,80 @@ func newMesh(vertices []vec3, faces []face, rotation vec3) mesh {
 
 func newCubeMesh() mesh {
 	return newMesh(cubeMeshVertices[:], cubeMeshFaces[:], vec3{})
+}
+
+func newMeshFromFromFile(path string) (mesh, error) {
+	var v []vec3
+	var fa []face
+
+	f, err := os.Open(path)
+	if err != nil {
+		return mesh{}, err
+	}
+	defer f.Close()
+
+	scanner := bufio.NewScanner(f)
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+
+		switch fields[0] {
+		case "v":
+			if len(fields) < 4 {
+				return mesh{}, fmt.Errorf("malformed vertex: got %d coordinates", len(fields)-1)
+			}
+
+			parsedX, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return mesh{}, err
+			}
+			parsedY, err := strconv.ParseFloat(fields[2], 64)
+			if err != nil {
+				return mesh{}, err
+			}
+			parsedZ, err := strconv.ParseFloat(fields[3], 64)
+			if err != nil {
+				return mesh{}, err
+			}
+
+			v = append(v, vec3{parsedX, parsedY, parsedZ})
+
+		case "f":
+			if len(fields) < 4 {
+				return mesh{}, fmt.Errorf("malformed face: expected at least 3 vertices")
+			}
+			xStr := strings.Split(fields[1], "/")[0]
+			yStr := strings.Split(fields[2], "/")[0]
+			zStr := strings.Split(fields[3], "/")[0]
+
+			xInt, err := strconv.Atoi(xStr)
+			if err != nil {
+				return mesh{}, err
+			}
+			yInt, err := strconv.Atoi(yStr)
+			if err != nil {
+				return mesh{}, err
+			}
+			zInt, err := strconv.Atoi(zStr)
+			if err != nil {
+				return mesh{}, err
+			}
+
+			fa = append(fa, face{xInt, yInt, zInt})
+
+		default:
+			log.Printf("Not implemented parsing line type %q", fields[0])
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return mesh{}, err
+	}
+	return mesh{vertices: v, faces: fa, rotation: vec3{}}, nil
 }
