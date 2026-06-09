@@ -40,10 +40,15 @@ func setup(r *sdl.Renderer) error {
 func render(r *sdl.Renderer) error {
 	for i := 0; i < nMeshFaces; i++ {
 		triangle := trianglesToRender[i]
-		drawRectangle(int(triangle.points[0].X), int(triangle.points[0].Y), 3, 3, 0xFFFFFF00)
-		drawRectangle(int(triangle.points[1].X), int(triangle.points[1].Y), 3, 3, 0xFFFFFF00)
-		drawRectangle(int(triangle.points[2].X), int(triangle.points[2].Y), 3, 3, 0xFFFFFF00)
+		drawRectangle(triangle.points[0].X, triangle.points[0].Y, 3, 3, 0xFFFFFF00)
+		drawRectangle(triangle.points[1].X, triangle.points[1].Y, 3, 3, 0xFFFFFF00)
+		drawRectangle(triangle.points[2].X, triangle.points[2].Y, 3, 3, 0xFFFFFF00)
+
+		drawTriangle(triangle.points[0].X, triangle.points[0].Y,
+			triangle.points[1].X, triangle.points[1].Y,
+			triangle.points[2].X, triangle.points[2].Y, 0xFF00FF00)
 	}
+
 	err := renderColorBuffer(r)
 	if err != nil {
 		return err
@@ -56,7 +61,7 @@ func render(r *sdl.Renderer) error {
 func project(point vec3) (projectedPoint vec2) {
 	// To get perspective projection you follow the formula
 	// P'y = Py/Pz and P'x = Px/Pz, where P'y and P'x are the projected points
-	projectedPoint = vec2{X: (point.X * fovFactor) / point.Z, Y: point.Y * fovFactor / point.Z}
+	projectedPoint = vec2{X: int((point.X * fovFactor) / point.Z), Y: int(point.Y * fovFactor / point.Z)}
 	return projectedPoint
 }
 
@@ -89,8 +94,8 @@ func update() {
 
 			projectedPoint := project(transformedVertex)
 
-			projectedPoint.X += float64(windowWidth / 2)
-			projectedPoint.Y += float64(windowHeight / 2)
+			projectedPoint.X += windowWidth / 2
+			projectedPoint.Y += windowHeight / 2
 
 			projectedTriangle.points[j] = projectedPoint
 		}

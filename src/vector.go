@@ -3,8 +3,8 @@ package main
 import "math"
 
 type vec2 struct {
-	X float64
-	Y float64
+	X int
+	Y int
 }
 
 type vec3 struct {

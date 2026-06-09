@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -89,4 +90,33 @@ func drawPixel(x, y int, color uint32) {
 	if x >= 0 && y >= 0 && x < windowWidth && y < windowHeight {
 		colorBuffer[(y*windowWidth)+x] = color
 	}
+}
+
+// drawLine implements a DDA algorithm for drawing lines
+func drawLine(x0, y0, x1, y1 int, color uint32) {
+	deltaX := x1 - x0
+	deltaY := y1 - y0
+
+	var sideLength float64
+
+	if math.Abs(float64(deltaX)) > math.Abs(float64(deltaY)) {
+		sideLength = math.Abs(float64(deltaX))
+	} else {
+		sideLength = math.Abs(float64(deltaY))
+	}
+	yInc := float64(deltaY) / sideLength
+	xInc := float64(deltaX) / sideLength
+	yCur := float64(y0)
+	xCur := float64(x0)
+	for i := 0.0; i <= sideLength; i++ {
+		drawPixel(int(math.Round(xCur)), int(math.Round(yCur)), color)
+		yCur += yInc
+		xCur += xInc
+	}
+}
+
+func drawTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
+	drawLine(x0, y0, x1, y1, color)
+	drawLine(x1, y1, x2, y2, color)
+	drawLine(x2, y2, x0, y0, color)
 }
