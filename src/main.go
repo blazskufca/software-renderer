@@ -11,7 +11,7 @@ import (
 
 const (
 	fovFactor                = 640
-	FPS                      = 30
+	FPS                      = 60
 	frameTargetTime   uint64 = 1000 / FPS
 	cubeNMeshVertices        = 8
 )
@@ -21,7 +21,7 @@ var (
 	windowHeight       = 600
 	colorBuffer        []uint32
 	colorBufferTexture *sdl.Texture
-	cameraPosition     vec3   = vec3{0, 0, -5}
+	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
 	trianglesToRender  []triangle
 )
@@ -33,7 +33,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
@@ -77,7 +77,10 @@ func update() {
 		sdl.Delay(uint32(timeToWait))
 	}
 	trianglesToRender = make([]triangle, 0, len(currentMesh.faces))
-	previousFrameTime = sdl.GetTicks64()
+
+	now := sdl.GetTicks64()
+	log.Printf("Last frame took %d ms", now-previousFrameTime)
+	previousFrameTime = now
 	currentMesh.rotation.Y += 0.01
 	currentMesh.rotation.X += 0.01
 	currentMesh.rotation.Z += 0.01
@@ -90,15 +93,34 @@ func update() {
 		facesVertices[1] = currentMesh.vertices[face.b-1]
 		facesVertices[2] = currentMesh.vertices[face.c-1]
 		var projectedTriangle triangle
+		var transformedVertexArr [3]vec3
 		for j := 0; j < 3; j++ {
 			transformedVertex := facesVertices[j]
 			transformedVertex.rotateY(currentMesh.rotation.Y)
 			transformedVertex.rotateX(currentMesh.rotation.X)
 			transformedVertex.rotateZ(currentMesh.rotation.Z)
+			transformedVertex.Z += 5
+			transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
+		}
 
-			transformedVertex.Z -= cameraPosition.Z
+		// Backface culling
+		vectorA, vectorB, vectorC := transformedVertexArr[0], transformedVertexArr[1], transformedVertexArr[2]
+		BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
 
-			projectedPoint := project(transformedVertex)
+		// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
+		faceNormal := BAVector.cross(CAVector)
+
+		cameraRayVec := cameraPosition.sub(vectorA)
+
+		cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
+
+		// If dot product is less than 0 we should hide the face
+		if cameraRayFaceNormalDot < 0 {
+			continue
+		}
+
+		for j := 0; j < len(transformedVertexArr); j++ {
+			projectedPoint := project(transformedVertexArr[j])
 
 			// Transpose to center of viewport on both axis
 			projectedPoint.X += windowWidth / 2
