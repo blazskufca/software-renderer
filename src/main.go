@@ -33,7 +33,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/a.obj")
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
@@ -106,9 +106,14 @@ func update() {
 		// Backface culling
 		vectorA, vectorB, vectorC := transformedVertexArr[0], transformedVertexArr[1], transformedVertexArr[2]
 		BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
+		// For vectors BA and CA we also only care about the direction and not the magnitude
+		BAVector.normalize()
+		CAVector.normalize()
 
 		// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
+		// Face normal vector can be normalized
 		faceNormal := BAVector.cross(CAVector)
+		faceNormal.normalize()
 
 		cameraRayVec := cameraPosition.sub(vectorA)
 

@@ -2,6 +2,9 @@ package main
 
 import "math"
 
+// TODO: Fix this to either have all the pointer receivers or all value receivers
+// TODO: Fix the weird casts lol
+
 type vec3 struct {
 	X float64
 	Y float64
@@ -19,6 +22,13 @@ func (v *vec3) rotateY(angle float64) {
 
 func (v *vec3) rotateZ(angle float64) {
 	v.X, v.Y = v.X*math.Cos(angle)-v.Y*math.Sin(angle), v.X*math.Sin(angle)+v.Y*math.Cos(angle)
+}
+
+func (v *vec3) normalize() {
+	magnitude := v.length()
+	v.X = v.X / magnitude
+	v.Y = v.Y / magnitude
+	v.Z = v.Z / magnitude
 }
 
 func (v vec3) length() float64 {
@@ -85,5 +95,11 @@ func (v vec2) divide(factor float64) vec2 {
 }
 
 func (v vec2) dot(other vec2) int {
-	return (v.X*other.X) + (v.Y*other.Y)
+	return (v.X * other.X) + (v.Y * other.Y)
+}
+
+func (v *vec2) normalize() {
+	magnitude := v.length()
+	v.X = v.X / int(magnitude)
+	v.Y = v.Y / int(magnitude)
 }
