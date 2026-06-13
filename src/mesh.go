@@ -52,17 +52,23 @@ var (
 // Each mesh has a collection of vertices and collection of faces and a vec3 rotation vector
 // We seperate vertices from faces, becasue multiple faces can share the same vertices...
 type mesh struct {
-	vertices []vec3
-	faces    []face
-	rotation vec3 // rotation is also called Euler angle
+	vertices    []vec3
+	faces       []face
+	rotation    vec3 // rotation is also called Euler angle
+	scale       vec3
+	translation vec3
 }
 
-func newMesh(vertices []vec3, faces []face, rotation vec3) mesh {
-	return mesh{vertices, faces, rotation}
+func newMesh(vertices []vec3, faces []face, rotation, scale, translation vec3) mesh {
+	if scale == (vec3{}) {
+		scale = vec3{1.0, 1.0, 1.0}
+	}
+
+	return mesh{vertices, faces, rotation, scale, translation}
 }
 
 func newCubeMesh() mesh {
-	return newMesh(cubeMeshVertices[:], cubeMeshFaces[:], vec3{})
+	return newMesh(cubeMeshVertices[:], cubeMeshFaces[:], vec3{}, vec3{}, vec3{})
 }
 
 func newMeshFromFromFile(path string) (mesh, error) {

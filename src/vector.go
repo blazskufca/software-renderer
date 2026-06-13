@@ -103,3 +103,19 @@ func (v *vec2) normalize() {
 	v.X = v.X / int(magnitude)
 	v.Y = v.Y / int(magnitude)
 }
+
+type vec4 struct {
+	X, Y, Z, W float64
+}
+
+func vec4FromVec3(vec vec3) vec4 {
+	return vec4{vec.X, vec.Y, vec.Z, 1}
+}
+
+func vec3FromVec4(vec vec4) vec3 {
+	return vec3{
+		X: vec.X,
+		Y: vec.Y,
+		Z: vec.Z,
+	}
+}

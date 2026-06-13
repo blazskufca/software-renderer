@@ -37,7 +37,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	//currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
+	//currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -100,6 +100,14 @@ func update() {
 	currentMesh.rotation.X += 0.01
 	currentMesh.rotation.Z += 0.01
 
+	currentMesh.scale.X += 0.002
+	currentMesh.scale.Y += 0.001
+	currentMesh.translation.X += 0.01
+	currentMesh.translation.Z = 5
+	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
+	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
+	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
+
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
 		meshFace := currentMesh.faces[i]
@@ -107,19 +115,25 @@ func update() {
 		facesVertices[0] = currentMesh.vertices[meshFace.a-1]
 		facesVertices[1] = currentMesh.vertices[meshFace.b-1]
 		facesVertices[2] = currentMesh.vertices[meshFace.c-1]
-		var transformedVertexArr [3]vec3
+		// order matters
+		// Scale -> rotate -> translate
+
+		worldMatrix := mat4Identity()
+		worldMatrix = scaleMatrix.mulMat4(worldMatrix)
+		worldMatrix = rotationMatrixZ.mulMat4(worldMatrix)
+		worldMatrix = rotationMatrixY.mulMat4(worldMatrix)
+		worldMatrix = rotationMatrixX.mulMat4(worldMatrix)
+		worldMatrix = translationMatrix.mulMat4(worldMatrix)
+		var transformedVertexArr [3]vec4
 		for j := 0; j < 3; j++ {
-			transformedVertex := facesVertices[j]
-			transformedVertex.rotateY(currentMesh.rotation.Y)
-			transformedVertex.rotateX(currentMesh.rotation.X)
-			transformedVertex.rotateZ(currentMesh.rotation.Z)
-			transformedVertex.Z += 5
+			transformedVertex := vec4FromVec3(facesVertices[j])
+			transformedVertex = worldMatrix.mulVec4(transformedVertex)
 			transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
 		}
 
 		if cullMethod == CULL_BACKFACE {
 			// Backface culling
-			vectorA, vectorB, vectorC := transformedVertexArr[0], transformedVertexArr[1], transformedVertexArr[2]
+			vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
 			BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
 			// For vectors BA and CA we also only care about the direction and not the magnitude
 			BAVector.normalize()
@@ -142,7 +156,7 @@ func update() {
 
 		var projectedPoints [3]vec2
 		for j := 0; j < len(transformedVertexArr); j++ {
-			projectedPoints[j] = project(transformedVertexArr[j])
+			projectedPoints[j] = project(vec3FromVec4(transformedVertexArr[j]))
 
 			// Transpose to center of viewport on both axis
 			projectedPoints[j].X += windowWidth / 2
