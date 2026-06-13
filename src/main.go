@@ -33,7 +33,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh, err = newMeshFromFromFile("./assets/a.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
@@ -47,11 +47,10 @@ func render(r *sdl.Renderer) error {
 		drawRectangle(triangle.points[1].X, triangle.points[1].Y, 3, 3, 0xFFFFFF00)
 		drawRectangle(triangle.points[2].X, triangle.points[2].Y, 3, 3, 0xFFFFFF00)
 
-		drawTriangle(triangle.points[0].X, triangle.points[0].Y,
+		drawFilledTriangle(triangle.points[0].X, triangle.points[0].Y,
 			triangle.points[1].X, triangle.points[1].Y,
 			triangle.points[2].X, triangle.points[2].Y, 0xFF00FF00)
 	}
-
 	err := renderColorBuffer(r)
 	if err != nil {
 		return err
