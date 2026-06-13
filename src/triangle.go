@@ -12,8 +12,9 @@ type face struct {
 
 // triangle stores actual vec2 points of the triangle projected onto the screen
 type triangle struct {
-	points [3]vec2
-	color  uint32
+	points   [3]vec2
+	color    uint32
+	avgDepth float64
 }
 
 func intSwap(a, b *int) {

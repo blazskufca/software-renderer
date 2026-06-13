@@ -1,8 +1,10 @@
 package main
 
 import (
+	"cmp"
 	"fmt"
 	"log"
+	"slices"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -151,10 +153,13 @@ func update() {
 		projectedTriangle.points[1] = projectedPoints[1]
 		projectedTriangle.points[2] = projectedPoints[2]
 		projectedTriangle.color = meshFace.color
-
+		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
-
 	}
+	// Painters algorithm
+	slices.SortFunc(trianglesToRender, func(a, b triangle) int {
+		return cmp.Compare(b.avgDepth, a.avgDepth)
+	})
 
 }
 
