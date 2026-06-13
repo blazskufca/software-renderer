@@ -4,14 +4,16 @@ import "math"
 
 // face stores vertex indexes
 type face struct {
-	a int
-	b int
-	c int
+	a     int
+	b     int
+	c     int
+	color uint32
 }
 
 // triangle stores actual vec2 points of the triangle projected onto the screen
 type triangle struct {
 	points [3]vec2
+	color  uint32
 }
 
 func intSwap(a, b *int) {

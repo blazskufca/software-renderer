@@ -35,10 +35,11 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
-	if err != nil {
-		return fmt.Errorf("failed to load obj: %w", err)
-	}
+	//currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
+	//if err != nil {
+	//	return fmt.Errorf("failed to load obj: %w", err)
+	//}
+	currentMesh = newCubeMesh()
 	return nil
 }
 
@@ -48,7 +49,7 @@ func render(r *sdl.Renderer) error {
 		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
 			drawFilledTriangle(triangle.points[0].X, triangle.points[0].Y,
 				triangle.points[1].X, triangle.points[1].Y,
-				triangle.points[2].X, triangle.points[2].Y, 0xFF555555)
+				triangle.points[2].X, triangle.points[2].Y, triangle.color)
 		}
 
 		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
@@ -99,12 +100,11 @@ func update() {
 
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
-		face := currentMesh.faces[i]
+		meshFace := currentMesh.faces[i]
 		facesVertices := make([]vec3, 3)
-		facesVertices[0] = currentMesh.vertices[face.a-1]
-		facesVertices[1] = currentMesh.vertices[face.b-1]
-		facesVertices[2] = currentMesh.vertices[face.c-1]
-		var projectedTriangle triangle
+		facesVertices[0] = currentMesh.vertices[meshFace.a-1]
+		facesVertices[1] = currentMesh.vertices[meshFace.b-1]
+		facesVertices[2] = currentMesh.vertices[meshFace.c-1]
 		var transformedVertexArr [3]vec3
 		for j := 0; j < 3; j++ {
 			transformedVertex := facesVertices[j]
@@ -138,15 +138,20 @@ func update() {
 			}
 		}
 
+		var projectedPoints [3]vec2
 		for j := 0; j < len(transformedVertexArr); j++ {
-			projectedPoint := project(transformedVertexArr[j])
+			projectedPoints[j] = project(transformedVertexArr[j])
 
 			// Transpose to center of viewport on both axis
-			projectedPoint.X += windowWidth / 2
-			projectedPoint.Y += windowHeight / 2
-
-			projectedTriangle.points[j] = projectedPoint
+			projectedPoints[j].X += windowWidth / 2
+			projectedPoints[j].Y += windowHeight / 2
 		}
+		var projectedTriangle triangle
+		projectedTriangle.points[0] = projectedPoints[0]
+		projectedTriangle.points[1] = projectedPoints[1]
+		projectedTriangle.points[2] = projectedPoints[2]
+		projectedTriangle.color = meshFace.color
+
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
 
 	}
