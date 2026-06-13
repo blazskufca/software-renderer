@@ -24,6 +24,8 @@ var (
 	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
 	trianglesToRender  []triangle
+	renderMethod       = RENDER_WIRE
+	cullMethod         = CULL_BACKFACE
 )
 
 func setup(r *sdl.Renderer) error {
@@ -33,7 +35,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
@@ -43,13 +45,24 @@ func setup(r *sdl.Renderer) error {
 func render(r *sdl.Renderer) error {
 	for i := 0; i < len(trianglesToRender); i++ {
 		triangle := trianglesToRender[i]
-		drawRectangle(triangle.points[0].X, triangle.points[0].Y, 3, 3, 0xFFFFFF00)
-		drawRectangle(triangle.points[1].X, triangle.points[1].Y, 3, 3, 0xFFFFFF00)
-		drawRectangle(triangle.points[2].X, triangle.points[2].Y, 3, 3, 0xFFFFFF00)
+		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
+			drawFilledTriangle(triangle.points[0].X, triangle.points[0].Y,
+				triangle.points[1].X, triangle.points[1].Y,
+				triangle.points[2].X, triangle.points[2].Y, 0xFF555555)
+		}
 
-		drawFilledTriangle(triangle.points[0].X, triangle.points[0].Y,
-			triangle.points[1].X, triangle.points[1].Y,
-			triangle.points[2].X, triangle.points[2].Y, 0xFF00FF00)
+		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
+			drawTriangle(triangle.points[0].X, triangle.points[0].Y,
+				triangle.points[1].X, triangle.points[1].Y,
+				triangle.points[2].X, triangle.points[2].Y, 0xFFFFFFFF)
+		}
+
+		if renderMethod == RENDER_WIRE_VERTEX {
+			drawRectangle(triangle.points[0].X-3, triangle.points[0].Y-3, 6, 6, 0xFFFFFF00)
+			drawRectangle(triangle.points[1].X-3, triangle.points[1].Y-3, 6, 6, 0xFFFFFF00)
+			drawRectangle(triangle.points[2].X-3, triangle.points[2].Y-3, 6, 6, 0xFFFFFF00)
+		}
+
 	}
 	err := renderColorBuffer(r)
 	if err != nil {
@@ -102,25 +115,27 @@ func update() {
 			transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
 		}
 
-		// Backface culling
-		vectorA, vectorB, vectorC := transformedVertexArr[0], transformedVertexArr[1], transformedVertexArr[2]
-		BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
-		// For vectors BA and CA we also only care about the direction and not the magnitude
-		BAVector.normalize()
-		CAVector.normalize()
+		if cullMethod == CULL_BACKFACE {
+			// Backface culling
+			vectorA, vectorB, vectorC := transformedVertexArr[0], transformedVertexArr[1], transformedVertexArr[2]
+			BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
+			// For vectors BA and CA we also only care about the direction and not the magnitude
+			BAVector.normalize()
+			CAVector.normalize()
 
-		// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
-		// Face normal vector can be normalized
-		faceNormal := BAVector.cross(CAVector)
-		faceNormal.normalize()
+			// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
+			// Face normal vector can be normalized
+			faceNormal := BAVector.cross(CAVector)
+			faceNormal.normalize()
 
-		cameraRayVec := cameraPosition.sub(vectorA)
+			cameraRayVec := cameraPosition.sub(vectorA)
 
-		cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
+			cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
 
-		// If dot product is less than 0 we should hide the face
-		if cameraRayFaceNormalDot < 0 {
-			continue
+			// If dot product is less than 0 we should hide the face
+			if cameraRayFaceNormalDot < 0 {
+				continue
+			}
 		}
 
 		for j := 0; j < len(transformedVertexArr); j++ {
@@ -146,8 +161,23 @@ func processInput(running *bool) {
 			break
 		case *sdl.KeyboardEvent:
 			// Check if it's a keydown event and specifically the ESCAPE key
-			if t.Type == sdl.KEYDOWN && t.Keysym.Sym == sdl.K_ESCAPE {
-				*running = false
+			if t.Type == sdl.KEYDOWN {
+				switch t.Keysym.Sym {
+				case sdl.K_ESCAPE:
+					*running = false
+				case sdl.K_1:
+					renderMethod = RENDER_WIRE_VERTEX
+				case sdl.K_2:
+					renderMethod = RENDER_WIRE
+				case sdl.K_3:
+					renderMethod = RENDER_FILL_TRIANGLE
+				case sdl.K_4:
+					renderMethod = RENDER_FILL_TRIANGLE_WIRE
+				case sdl.K_c:
+					cullMethod = CULL_BACKFACE
+				case sdl.K_d:
+					cullMethod = CULL_NONE
+				}
 			}
 		}
 	}

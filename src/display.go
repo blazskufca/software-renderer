@@ -8,6 +8,22 @@ import (
 	"github.com/veandco/go-sdl2/sdl"
 )
 
+type cullMode int
+
+type renderMode int
+
+const (
+	CULL_NONE cullMode = iota
+	CULL_BACKFACE
+)
+
+const (
+	RENDER_WIRE renderMode = iota
+	RENDER_WIRE_VERTEX
+	RENDER_FILL_TRIANGLE
+	RENDER_FILL_TRIANGLE_WIRE
+)
+
 func initializeWindow() (*sdl.Window, *sdl.Renderer, error) {
 	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize SDL2 with error: %w", err)
