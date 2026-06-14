@@ -144,5 +144,5 @@ func newMeshFromFromFile(path string) (mesh, error) {
 	if err := scanner.Err(); err != nil {
 		return mesh{}, err
 	}
-	return mesh{vertices: v, faces: fa, rotation: vec3{}}, nil
+	return newMesh(v, fa, vec3{}, vec3{}, vec3{}), nil
 }
