@@ -118,3 +118,35 @@ func (m mat4) mulMat4(other mat4) mat4 {
 	}
 	return result
 }
+
+// mat4MakePerspective accepts a FOV angle, aspect ratio (h/w), zNear and zFar
+// and returns a matrix
+// | aspect*(1/tan(fov/2)	0					0						0								|
+// | 0						1/(tan(fov/2))		0						0								|
+// | 0						0					zFar/(zFar - zNear)		(-zFar)/(zFar-zNear)*zNear)		|
+// | 0						0					1						0								|
+// | 											^
+// | 											|
+// | 											-- This 1 here stores the original Z in the matrix W
+func mat4MakePerspective(fov, aspect, znear, zfar float64) mat4 {
+	m := mat4{}
+	m.m[0][0] = aspect * (1 / (math.Tan(fov / 2)))
+	m.m[1][1] = 1 / (math.Tan(fov / 2))
+	m.m[2][2] = zfar / (zfar - znear)
+	m.m[2][3] = (-zfar * znear) / (zfar - znear)
+	m.m[3][2] = 1 // Store the original Z in the matrix W
+	return m
+}
+
+// mat4MulVec4Project applies perspective matrix and does perspective divide
+func (m *mat4) mat4MulVec4Project(vec vec4) vec4 {
+	result := m.mulVec4(vec)
+	// Original Z is stored in result W
+	// After doing aspect ratio, FOV and normalization we still need to perform perspective divide
+	if result.W != 0 {
+		result.X /= result.W
+		result.Y /= result.W
+		result.Z /= result.W
+	}
+	return result
+}

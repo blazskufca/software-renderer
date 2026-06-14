@@ -4,6 +4,7 @@ import (
 	"cmp"
 	"fmt"
 	"log"
+	"math"
 	"slices"
 
 	"github.com/veandco/go-sdl2/sdl"
@@ -12,7 +13,6 @@ import (
 // TODO: Move global state into a central structure
 
 const (
-	fovFactor                = 640
 	FPS                      = 60
 	frameTargetTime   uint64 = 1000 / FPS
 	cubeNMeshVertices        = 8
@@ -26,8 +26,9 @@ var (
 	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
 	trianglesToRender  []triangle
-	renderMethod       = RENDER_WIRE
-	cullMethod         = CULL_BACKFACE
+	renderMethod            = RENDER_WIRE
+	cullMethod              = CULL_BACKFACE
+	projectionMatrix   mat4 = mat4{}
 )
 
 func setup(r *sdl.Renderer) error {
@@ -37,6 +38,13 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
+
+	FOV := math.Pi / 3 // FOV needs to be in radians -> math.pi/3 = 60deg
+	aspectRatio := float64(windowHeight) / float64(windowWidth)
+	// We've randomly picked zNear and zFar as these valeues
+	zNear, zFar := 0.1, 100.0
+	// Initialize the perspective projection matrix
+	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
 	//currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
@@ -78,12 +86,12 @@ func render(r *sdl.Renderer) error {
 }
 
 // project applies perspective projection to vec3 point
-func project(point vec3) (projectedPoint vec2) {
-	// To get perspective projection you follow the formula
-	// P'y = Py/Pz and P'x = Px/Pz, where P'y and P'x are the projected points
-	projectedPoint = vec2{X: int((point.X * fovFactor) / point.Z), Y: int(point.Y * fovFactor / point.Z)}
-	return projectedPoint
-}
+//func project(point vec3) (projectedPoint vec2) {
+//	// To get perspective projection you follow the formula
+//	// P'y = Py/Pz and P'x = Px/Pz, where P'y and P'x are the projected points
+//	projectedPoint = vec2{X: int((point.X * fovFactor) / point.Z), Y: int(point.Y * fovFactor / point.Z)}
+//	return projectedPoint
+//}
 
 func update() {
 	timeToWait := frameTargetTime - (sdl.GetTicks64() - previousFrameTime)
@@ -96,13 +104,13 @@ func update() {
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
-	currentMesh.rotation.Y += 0.01
+	//currentMesh.rotation.Y += 0.01
 	currentMesh.rotation.X += 0.01
-	currentMesh.rotation.Z += 0.01
+	//currentMesh.rotation.Z += 0.01
 
-	currentMesh.scale.X += 0.002
-	currentMesh.scale.Y += 0.001
-	currentMesh.translation.X += 0.01
+	//currentMesh.scale.X += 0.002
+	//currentMesh.scale.Y += 0.001
+	//currentMesh.translation.X += 0.01
 	currentMesh.translation.Z = 5
 	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
 	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
@@ -154,18 +162,22 @@ func update() {
 			}
 		}
 
-		var projectedPoints [3]vec2
+		var projectedPoints [3]vec4
 		for j := 0; j < len(transformedVertexArr); j++ {
-			projectedPoints[j] = project(vec3FromVec4(transformedVertexArr[j]))
+			projectedPoints[j] = projectionMatrix.mat4MulVec4Project(transformedVertexArr[j])
 
-			// Transpose to center of viewport on both axis
-			projectedPoints[j].X += windowWidth / 2
-			projectedPoints[j].Y += windowHeight / 2
+			// Scale into the view
+			projectedPoints[j].X *= float64(windowWidth / 2)
+			projectedPoints[j].Y *= float64(windowHeight / 2)
+
+			// Translate the projected point into the middle of the screen
+			projectedPoints[j].X += float64(windowWidth / 2)
+			projectedPoints[j].Y += float64(windowHeight / 2)
 		}
 		var projectedTriangle triangle
-		projectedTriangle.points[0] = projectedPoints[0]
-		projectedTriangle.points[1] = projectedPoints[1]
-		projectedTriangle.points[2] = projectedPoints[2]
+		projectedTriangle.points[0] = vec2{int(projectedPoints[0].X), int(projectedPoints[0].Y)}
+		projectedTriangle.points[1] = vec2{int(projectedPoints[1].X), int(projectedPoints[1].Y)}
+		projectedTriangle.points[2] = vec2{int(projectedPoints[2].X), int(projectedPoints[2].Y)}
 		projectedTriangle.color = meshFace.color
 		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
