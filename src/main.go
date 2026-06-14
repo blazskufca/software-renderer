@@ -106,7 +106,7 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
 	//currentMesh.rotation.Y += 0.01
-	currentMesh.rotation.X += 0.01
+	//currentMesh.rotation.X += 0.01
 	//currentMesh.rotation.Z += 0.01
 
 	//currentMesh.scale.X += 0.002
@@ -170,6 +170,8 @@ func update() {
 			projectedPoints[j].X *= float64(windowWidth / 2)
 			projectedPoints[j].Y *= float64(windowHeight / 2)
 
+			// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
+			projectedPoints[j].Y *= -1
 			// Translate the projected point into the middle of the screen
 			projectedPoints[j].X += float64(windowWidth / 2)
 			projectedPoints[j].Y += float64(windowHeight / 2)
