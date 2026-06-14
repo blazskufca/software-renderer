@@ -28,23 +28,23 @@ var (
 	// The order of the indexes matters...Clockwise orientation meas the face is facing outwards and opposite means its facing inwards
 	cubeMeshFaces = [nCubeFaces]face{
 		// front
-		{a: 1, b: 2, c: 3, color: 0xFFFF0000},
-		{a: 1, b: 3, c: 4, color: 0xFFFF0000},
+		{a: 1, b: 2, c: 3, color: 0xFFFFFFFF},
+		{a: 1, b: 3, c: 4, color: 0xFFFFFFFF},
 		// right
-		{a: 4, b: 3, c: 5, color: 0xFF00FF00},
-		{a: 4, b: 5, c: 6, color: 0xFF00FF00},
+		{a: 4, b: 3, c: 5, color: 0xFFFFFFFF},
+		{a: 4, b: 5, c: 6, color: 0xFFFFFFFF},
 		// back
-		{a: 6, b: 5, c: 7, color: 0xFF0000FF},
-		{a: 6, b: 7, c: 8, color: 0xFF0000FF},
+		{a: 6, b: 5, c: 7, color: 0xFFFFFFFF},
+		{a: 6, b: 7, c: 8, color: 0xFFFFFFFF},
 		// left
-		{a: 8, b: 7, c: 2, color: 0xFFFFFF00},
-		{a: 8, b: 2, c: 1, color: 0xFFFFFF00},
+		{a: 8, b: 7, c: 2, color: 0xFFFFFFFF},
+		{a: 8, b: 2, c: 1, color: 0xFFFFFFFF},
 		// top
-		{a: 2, b: 7, c: 5, color: 0xFFFF00FF},
-		{a: 2, b: 5, c: 3, color: 0xFFFF00FF},
+		{a: 2, b: 7, c: 5, color: 0xFFFFFFFF},
+		{a: 2, b: 5, c: 3, color: 0xFFFFFFFF},
 		// bottom
-		{a: 6, b: 8, c: 1, color: 0xFF00FFFF},
-		{a: 6, b: 1, c: 4, color: 0xFF00FFFF},
+		{a: 6, b: 8, c: 1, color: 0xFFFFFFFF},
+		{a: 6, b: 1, c: 4, color: 0xFFFFFFFF},
 	}
 	currentMesh mesh
 )
@@ -135,7 +135,7 @@ func newMeshFromFromFile(path string) (mesh, error) {
 				return mesh{}, err
 			}
 
-			fa = append(fa, face{xInt, yInt, zInt, 0xFF00FF00})
+			fa = append(fa, face{xInt, yInt, zInt, 0xFFFFFFFF})
 
 		default:
 			log.Printf("Not implemented parsing line type %q", fields[0])

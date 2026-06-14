@@ -26,9 +26,10 @@ var (
 	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
 	trianglesToRender  []triangle
-	renderMethod            = RENDER_WIRE
-	cullMethod              = CULL_BACKFACE
-	projectionMatrix   mat4 = mat4{}
+	renderMethod             = RENDER_WIRE
+	cullMethod               = CULL_BACKFACE
+	projectionMatrix   mat4  = mat4{}
+	globalLight        light = light{direction: vec3{0, 0, 1}}
 )
 
 func setup(r *sdl.Renderer) error {
@@ -45,11 +46,11 @@ func setup(r *sdl.Renderer) error {
 	zNear, zFar := 0.1, 100.0
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	//currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
-	//if err != nil {
-	//	return fmt.Errorf("failed to load obj: %w", err)
-	//}
-	currentMesh = newCubeMesh()
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	if err != nil {
+		return fmt.Errorf("failed to load obj: %w", err)
+	}
+	//currentMesh = newCubeMesh()
 	return nil
 }
 
@@ -138,20 +139,19 @@ func update() {
 			transformedVertex = worldMatrix.mulVec4(transformedVertex)
 			transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
 		}
+		vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
+		BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
+		// For vectors BA and CA we also only care about the direction and not the magnitude
+		BAVector.normalize()
+		CAVector.normalize()
+
+		// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
+		// Face normal vector can be normalized
+		faceNormal := BAVector.cross(CAVector)
+		faceNormal.normalize()
 
 		if cullMethod == CULL_BACKFACE {
 			// Backface culling
-			vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
-			BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
-			// For vectors BA and CA we also only care about the direction and not the magnitude
-			BAVector.normalize()
-			CAVector.normalize()
-
-			// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
-			// Face normal vector can be normalized
-			faceNormal := BAVector.cross(CAVector)
-			faceNormal.normalize()
-
 			cameraRayVec := cameraPosition.sub(vectorA)
 
 			cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
@@ -175,10 +175,12 @@ func update() {
 			projectedPoints[j].Y += float64(windowHeight / 2)
 		}
 		var projectedTriangle triangle
+		// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
+		flatShadePercent := -faceNormal.dot(globalLight.direction)
+		projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
 		projectedTriangle.points[0] = vec2{int(projectedPoints[0].X), int(projectedPoints[0].Y)}
 		projectedTriangle.points[1] = vec2{int(projectedPoints[1].X), int(projectedPoints[1].Y)}
 		projectedTriangle.points[2] = vec2{int(projectedPoints[2].X), int(projectedPoints[2].Y)}
-		projectedTriangle.color = meshFace.color
 		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
 	}
