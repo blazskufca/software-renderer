@@ -44,13 +44,23 @@ func setup(r *sdl.Renderer) error {
 	aspectRatio := float64(windowHeight) / float64(windowWidth)
 	// We've randomly picked zNear and zFar as these valeues
 	zNear, zFar := 0.1, 100.0
+	meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
+	for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
+		// Extract the individual bytes and cast them to uint32 so we can shift them
+		r := uint32(REDBRICK_TEXTURE[i])
+		g := uint32(REDBRICK_TEXTURE[i+1])
+		b := uint32(REDBRICK_TEXTURE[i+2])
+		a := uint32(REDBRICK_TEXTURE[i+3])
+		pixelColor := (a << 24) | (r << 16) | (g << 8) | b
+		meshTexture[i/4] = pixelColor
+	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
-	if err != nil {
-		return fmt.Errorf("failed to load obj: %w", err)
-	}
-	//currentMesh = newCubeMesh()
+	//currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	//if err != nil {
+	//	return fmt.Errorf("failed to load obj: %w", err)
+	//}
+	currentMesh = newCubeMesh()
 	return nil
 }
 
@@ -63,12 +73,20 @@ func render(r *sdl.Renderer) error {
 				triangle.points[2].X, triangle.points[2].Y, triangle.color)
 		}
 
-		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
+		if renderMethod == RENDER_TEXTURED || renderMethod == RENDER_TEXTURED_WIRE {
+			drawTexturedTriangle(
+				triangle.points[0].X, triangle.points[0].Y, triangle.textCoords[0].u, triangle.textCoords[0].v,
+				triangle.points[1].X, triangle.points[1].Y, triangle.textCoords[1].u, triangle.textCoords[1].v,
+				triangle.points[2].X, triangle.points[2].Y, triangle.textCoords[2].u, triangle.textCoords[2].v,
+				&meshTexture,
+			)
+		}
+
+		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE || renderMethod == RENDER_TEXTURED_WIRE {
 			drawTriangle(triangle.points[0].X, triangle.points[0].Y,
 				triangle.points[1].X, triangle.points[1].Y,
 				triangle.points[2].X, triangle.points[2].Y, 0xFFFFFFFF)
 		}
-
 		if renderMethod == RENDER_WIRE_VERTEX {
 			drawRectangle(triangle.points[0].X-3, triangle.points[0].Y-3, 6, 6, 0xFFFFFF00)
 			drawRectangle(triangle.points[1].X-3, triangle.points[1].Y-3, 6, 6, 0xFFFFFF00)
@@ -106,7 +124,7 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
 	//currentMesh.rotation.Y += 0.01
-	//currentMesh.rotation.X += 0.01
+	currentMesh.rotation.X += 0.005
 	//currentMesh.rotation.Z += 0.01
 
 	//currentMesh.scale.X += 0.002
@@ -183,6 +201,9 @@ func update() {
 		projectedTriangle.points[0] = vec2{int(projectedPoints[0].X), int(projectedPoints[0].Y)}
 		projectedTriangle.points[1] = vec2{int(projectedPoints[1].X), int(projectedPoints[1].Y)}
 		projectedTriangle.points[2] = vec2{int(projectedPoints[2].X), int(projectedPoints[2].Y)}
+		projectedTriangle.textCoords[0] = meshFace.AUV
+		projectedTriangle.textCoords[1] = meshFace.BUV
+		projectedTriangle.textCoords[2] = meshFace.CUV
 		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
 	}
@@ -213,6 +234,10 @@ func processInput(running *bool) {
 					renderMethod = RENDER_FILL_TRIANGLE
 				case sdl.K_4:
 					renderMethod = RENDER_FILL_TRIANGLE_WIRE
+				case sdl.K_5:
+					renderMethod = RENDER_TEXTURED
+				case sdl.K_6:
+					renderMethod = RENDER_TEXTURED_WIRE
 				case sdl.K_c:
 					cullMethod = CULL_BACKFACE
 				case sdl.K_d:
