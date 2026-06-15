@@ -1,6 +1,12 @@
 package main
 
-import "math"
+import (
+	"fmt"
+	"image"
+	_ "image/png"
+	"math"
+	"os"
+)
 
 var (
 	textureWidth     int = 64
@@ -111,5 +117,38 @@ func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2) {
 	texY := clampInt(int(math.Round(interpolatedV*float64(textureHeight))), 0, textureHeight-1)
 
 	drawPixel(x, y, texture[(texY*textureWidth)+texX])
+
+}
+
+func loadPngTextureData(path string) error {
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	img, fileFormat, err := image.Decode(file)
+	if err != nil {
+		return err
+	}
+	if fileFormat != "png" {
+		return fmt.Errorf("unsupported file format: %s", fileFormat)
+	}
+
+	bounds := img.Bounds()
+	textureWidth, textureHeight = bounds.Max.X, bounds.Max.Y
+
+	meshTexture = make([]uint32, textureWidth*textureHeight)
+	for y := 0; y < textureHeight; y++ {
+		for x := 0; x < textureWidth; x++ {
+			r16, g16, b16, a16 := img.At(x, y).RGBA()
+			r8 := uint8(r16 >> 8)
+			g8 := uint8(g16 >> 8)
+			b8 := uint8(b16 >> 8)
+			a8 := uint8(a16 >> 8)
+			meshTexture[(y*textureWidth)+x] = (uint32(a8) << 24) | (uint32(b8) << 16) | (uint32(g8) << 8) | uint32(r8)
+		}
+	}
+	return nil
 
 }

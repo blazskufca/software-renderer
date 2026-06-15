@@ -35,7 +35,7 @@ var (
 func setup(r *sdl.Renderer) error {
 	var err error
 	colorBuffer = make([]uint32, windowWidth*windowHeight)
-	colorBufferTexture, err = r.CreateTexture(sdl.PIXELFORMAT_ARGB8888, sdl.TEXTUREACCESS_STREAMING, int32(windowWidth), int32(windowHeight))
+	colorBufferTexture, err = r.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32), sdl.TEXTUREACCESS_STREAMING, int32(windowWidth), int32(windowHeight))
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
@@ -44,15 +44,19 @@ func setup(r *sdl.Renderer) error {
 	aspectRatio := float64(windowHeight) / float64(windowWidth)
 	// We've randomly picked zNear and zFar as these valeues
 	zNear, zFar := 0.1, 100.0
-	meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
-	for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
-		// Extract the individual bytes and cast them to uint32 so we can shift them
-		b := uint32(REDBRICK_TEXTURE[i])
-		g := uint32(REDBRICK_TEXTURE[i+1])
-		r := uint32(REDBRICK_TEXTURE[i+2])
-		a := uint32(REDBRICK_TEXTURE[i+3])
-		pixelColor := (a << 24) | (r << 16) | (g << 8) | b
-		meshTexture[i/4] = pixelColor
+	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
+	//for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
+	//	// Extract the individual bytes and cast them to uint32 so we can shift them
+	//	b := uint32(REDBRICK_TEXTURE[i])
+	//	g := uint32(REDBRICK_TEXTURE[i+1])
+	//	r := uint32(REDBRICK_TEXTURE[i+2])
+	//	a := uint32(REDBRICK_TEXTURE[i+3])
+	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
+	//	meshTexture[i/4] = pixelColor
+	//}
+	err = loadPngTextureData("./assets/cube.png")
+	if err != nil {
+		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
