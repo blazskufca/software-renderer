@@ -47,9 +47,9 @@ func setup(r *sdl.Renderer) error {
 	meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
 	for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
 		// Extract the individual bytes and cast them to uint32 so we can shift them
-		r := uint32(REDBRICK_TEXTURE[i])
+		b := uint32(REDBRICK_TEXTURE[i])
 		g := uint32(REDBRICK_TEXTURE[i+1])
-		b := uint32(REDBRICK_TEXTURE[i+2])
+		r := uint32(REDBRICK_TEXTURE[i+2])
 		a := uint32(REDBRICK_TEXTURE[i+3])
 		pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 		meshTexture[i/4] = pixelColor
@@ -78,7 +78,7 @@ func render(r *sdl.Renderer) error {
 				triangle.points[0].X, triangle.points[0].Y, triangle.textCoords[0].u, triangle.textCoords[0].v,
 				triangle.points[1].X, triangle.points[1].Y, triangle.textCoords[1].u, triangle.textCoords[1].v,
 				triangle.points[2].X, triangle.points[2].Y, triangle.textCoords[2].u, triangle.textCoords[2].v,
-				&meshTexture,
+				meshTexture,
 			)
 		}
 
@@ -124,7 +124,7 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
 	//currentMesh.rotation.Y += 0.01
-	currentMesh.rotation.X += 0.005
+	//currentMesh.rotation.X += 0.005
 	//currentMesh.rotation.Z += 0.01
 
 	//currentMesh.scale.X += 0.002

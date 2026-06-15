@@ -89,7 +89,7 @@ func fillFlatTopTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
 	}
 }
 
-func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64, x2, y2 int, u2, v2 float64, texture *[]uint32) {
+func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64, x2, y2 int, u2, v2 float64, texture []uint32) {
 	// Triangles vertices need to be sorted by the Y component here too
 	// But when we swap not only do we need X and Y, we also have to swap the UV coordinates
 	if y0 > y1 {
@@ -111,6 +111,11 @@ func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64
 		floatSwap(&u0, &u1)
 		floatSwap(&v0, &v1)
 	}
+
+	// Vector points
+	pointA := vec2{x0, y0}
+	pointB := vec2{x1, y1}
+	pointC := vec2{x2, y2}
 
 	// Render the flat-bottom triangle
 	// Inverse slope is dX/dy
@@ -135,7 +140,8 @@ func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawPixel(x, y, 0xFFFF00FF)
+				drawTexel(x, y, texture, pointA, pointB, pointC, u0, v0, u1, v1, u2, v2)
+				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
 		}
@@ -157,9 +163,30 @@ func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawPixel(x, y, 0xFFFF00FF)
+				drawTexel(x, y, texture, pointA, pointB, pointC, u0, v0, u1, v1, u2, v2)
+				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
 		}
 	}
+}
+
+func barycentricWeights(a, b, c, p vec2) vec3 {
+	ac := c.sub(a)
+	ab := b.sub(a)
+	pc := c.sub(p)
+	pb := b.sub(p)
+	ap := p.sub(a)
+	// This is the Z component of cross product ACxAB
+	ABCParallerogram := (float64(ac.X) * float64(ab.Y)) - (float64(ac.Y) * float64(ab.X))
+	// Again the Z component for the cross product
+	alpha := ((float64(pc.X) * float64(pb.Y)) - (float64(pc.Y) * float64(pb.X))) / ABCParallerogram
+	beta := ((float64(ac.X) * float64(ap.Y)) - (float64(ac.Y) * float64(ap.X))) / ABCParallerogram
+	gamma := 1.0 - alpha - beta
+	return vec3{
+		X: alpha,
+		Y: beta,
+		Z: gamma,
+	}
+
 }

@@ -1,5 +1,7 @@
 package main
 
+import "math"
+
 var (
 	textureWidth     int = 64
 	textureHeight    int = 64
@@ -75,4 +77,28 @@ var (
 type tex2 struct {
 	u float64
 	v float64
+}
+
+func clampInt(value, min, max int) int {
+	if value < min {
+		return min
+	}
+	if value > max {
+		return max
+	}
+	return value
+}
+
+func drawTexel(x, y int, texture []uint32, a, b, c vec2, u0, v0, u1, v1, u2, v2 float64) {
+	p := vec2{x, y}
+	weights := barycentricWeights(a, b, c, p)
+	alpha, beta, gamma := weights.X, weights.Y, weights.Z
+	interpolatedU := (u0*alpha + u1*beta + u2*gamma)
+	interpolatedV := v0*alpha + v1*beta + v2*gamma
+	// UV is always between 0 and 1 so we need to scale them to texture resolution
+	texX := clampInt(int(math.Round(interpolatedU*float64(textureWidth))), 0, textureWidth-1)
+	texY := clampInt(int(math.Round(interpolatedV*float64(textureHeight))), 0, textureHeight-1)
+
+	drawPixel(x, y, texture[(texY*textureWidth)+texX])
+
 }
