@@ -89,12 +89,23 @@ func clampInt(value, min, max int) int {
 	return value
 }
 
-func drawTexel(x, y int, texture []uint32, a, b, c vec2, u0, v0, u1, v1, u2, v2 float64) {
+func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2) {
 	p := vec2{x, y}
-	weights := barycentricWeights(a, b, c, p)
+	aVec2 := vec2FromVec4(a)
+	bVec2 := vec2FromVec4(b)
+	cVec2 := vec2FromVec4(c)
+
+	weights := barycentricWeights(aVec2, bVec2, cVec2, p)
 	alpha, beta, gamma := weights.X, weights.Y, weights.Z
-	interpolatedU := (u0*alpha + u1*beta + u2*gamma)
-	interpolatedV := v0*alpha + v1*beta + v2*gamma
+	// Perform the interpolation of all the U/w and V/w values using barycentric weights and a factor of 1/w
+	interpolatedU := (AUV.u/a.W)*alpha + (BUV.u/b.W)*beta + (CUV.u/c.W)*gamma
+	interpolatedV := (AUV.v/a.W)*alpha + (BUV.v/b.W)*beta + (CUV.v/c.W)*gamma
+	// This is 1/w because W (original Z) is not linear
+	interpolatedReciprocalW := (1/a.W)*alpha + (1/b.W)*beta + (1/c.W)*gamma
+
+	// Divide back both U and V by 1/w
+	interpolatedU /= interpolatedReciprocalW
+	interpolatedV /= interpolatedReciprocalW
 	// UV is always between 0 and 1 so we need to scale them to texture resolution
 	texX := clampInt(int(math.Round(interpolatedU*float64(textureWidth))), 0, textureWidth-1)
 	texY := clampInt(int(math.Round(interpolatedV*float64(textureHeight))), 0, textureHeight-1)

@@ -15,7 +15,7 @@ type face struct {
 
 // triangle stores actual vec2 points of the triangle projected onto the screen
 type triangle struct {
-	points     [3]vec2
+	points     [3]vec4
 	textCoords [3]tex2
 	color      uint32
 	avgDepth   float64
@@ -89,33 +89,43 @@ func fillFlatTopTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
 	}
 }
 
-func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64, x2, y2 int, u2, v2 float64, texture []uint32) {
+func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2 float64, texture []uint32) {
 	// Triangles vertices need to be sorted by the Y component here too
 	// But when we swap not only do we need X and Y, we also have to swap the UV coordinates
 	if y0 > y1 {
-		intSwap(&y0, &y1)
-		intSwap(&x0, &x1)
+		floatSwap(&y0, &y1)
+		floatSwap(&x0, &x1)
 		floatSwap(&u0, &u1)
 		floatSwap(&v0, &v1)
+		floatSwap(&z0, &z1)
+		floatSwap(&w0, &w1)
 
 	}
 	if y1 > y2 {
-		intSwap(&y1, &y2)
-		intSwap(&x1, &x2)
+		floatSwap(&y1, &y2)
+		floatSwap(&x1, &x2)
 		floatSwap(&u1, &u2)
 		floatSwap(&v1, &v2)
+		floatSwap(&z1, &z2)
+		floatSwap(&w1, &w2)
 	}
 	if y0 > y1 {
-		intSwap(&y0, &y1)
-		intSwap(&x0, &x1)
+		floatSwap(&y0, &y1)
+		floatSwap(&x0, &x1)
 		floatSwap(&u0, &u1)
 		floatSwap(&v0, &v1)
+		floatSwap(&z0, &z1)
+		floatSwap(&w0, &w1)
+
 	}
 
 	// Vector points
-	pointA := vec2{x0, y0}
-	pointB := vec2{x1, y1}
-	pointC := vec2{x2, y2}
+	pointA := vec4{x0, y0, z0, w0}
+	pointB := vec4{x1, y1, z1, w1}
+	pointC := vec4{x2, y2, z2, w2}
+	AUV := tex2{u0, v0}
+	BUV := tex2{u1, v1}
+	CUV := tex2{u2, v2}
 
 	// Render the flat-bottom triangle
 	// Inverse slope is dX/dy
@@ -134,13 +144,13 @@ func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64
 			// y-y1 = m(x-x1)
 			// (y-y1)/m = x-x1
 			// x =  x1 + (y-y1)/m
-			xStart := x1 + int(math.Round(float64(y-y1)*inverseSlope1))
-			xEnd := x0 + int(math.Round(float64(y-y0)*inverseSlope2))
+			xStart := int(x1) + int(math.Round(float64(y-y1)*inverseSlope1))
+			xEnd := int(x0) + int(math.Round(float64(y-y0)*inverseSlope2))
 			if xEnd < xStart {
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, y, texture, pointA, pointB, pointC, u0, v0, u1, v1, u2, v2)
+				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
@@ -157,13 +167,13 @@ func drawTexturedTriangle(x0, y0 int, u0, v0 float64, x1, y1 int, u1, v1 float64
 	// For every scanline
 	if y2-y1 != 0 {
 		for y := y1; y < y2; y++ {
-			xStart := x1 + int(math.Round(float64(y-y1)*inverseSlope1))
-			xEnd := x0 + int(math.Round(float64(y-y0)*inverseSlope2))
+			xStart := int(x1) + int(math.Round(float64(y-y1)*inverseSlope1))
+			xEnd := int(x0) + int(math.Round(float64(y-y0)*inverseSlope2))
 			if xEnd < xStart {
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, y, texture, pointA, pointB, pointC, u0, v0, u1, v1, u2, v2)
+				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 

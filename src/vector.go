@@ -112,10 +112,20 @@ func vec4FromVec3(vec vec3) vec4 {
 	return vec4{vec.X, vec.Y, vec.Z, 1}
 }
 
+type vectorType interface {
+	vec2 | vec3 | vec4
+}
+
 func vec3FromVec4(vec vec4) vec3 {
 	return vec3{
 		X: vec.X,
 		Y: vec.Y,
 		Z: vec.Z,
+	}
+}
+
+func vec2FromVec4(vec vec4) vec2 {
+	return vec2{
+		int(math.Round(vec.X)), int(math.Round(vec.Y)),
 	}
 }

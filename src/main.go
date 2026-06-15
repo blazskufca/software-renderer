@@ -68,29 +68,29 @@ func render(r *sdl.Renderer) error {
 	for i := 0; i < len(trianglesToRender); i++ {
 		triangle := trianglesToRender[i]
 		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
-			drawFilledTriangle(triangle.points[0].X, triangle.points[0].Y,
-				triangle.points[1].X, triangle.points[1].Y,
-				triangle.points[2].X, triangle.points[2].Y, triangle.color)
+			drawFilledTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
+				int(triangle.points[1].X), int(triangle.points[1].Y),
+				int(triangle.points[2].X), int(triangle.points[2].Y), triangle.color)
 		}
 
 		if renderMethod == RENDER_TEXTURED || renderMethod == RENDER_TEXTURED_WIRE {
 			drawTexturedTriangle(
-				triangle.points[0].X, triangle.points[0].Y, triangle.textCoords[0].u, triangle.textCoords[0].v,
-				triangle.points[1].X, triangle.points[1].Y, triangle.textCoords[1].u, triangle.textCoords[1].v,
-				triangle.points[2].X, triangle.points[2].Y, triangle.textCoords[2].u, triangle.textCoords[2].v,
+				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].u, triangle.textCoords[0].v,
+				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].u, triangle.textCoords[1].v,
+				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].u, triangle.textCoords[2].v,
 				meshTexture,
 			)
 		}
 
 		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE || renderMethod == RENDER_TEXTURED_WIRE {
-			drawTriangle(triangle.points[0].X, triangle.points[0].Y,
-				triangle.points[1].X, triangle.points[1].Y,
-				triangle.points[2].X, triangle.points[2].Y, 0xFFFFFFFF)
+			drawTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
+				int(triangle.points[1].X), int(triangle.points[1].Y),
+				int(triangle.points[2].X), int(triangle.points[2].Y), 0xFFFFFFFF)
 		}
 		if renderMethod == RENDER_WIRE_VERTEX {
-			drawRectangle(triangle.points[0].X-3, triangle.points[0].Y-3, 6, 6, 0xFFFFFF00)
-			drawRectangle(triangle.points[1].X-3, triangle.points[1].Y-3, 6, 6, 0xFFFFFF00)
-			drawRectangle(triangle.points[2].X-3, triangle.points[2].Y-3, 6, 6, 0xFFFFFF00)
+			drawRectangle(int(triangle.points[0].X)-3, int(triangle.points[0].Y)-3, 6, 6, 0xFFFFFF00)
+			drawRectangle(int(triangle.points[1].X)-3, int(triangle.points[1].Y)-3, 6, 6, 0xFFFFFF00)
+			drawRectangle(int(triangle.points[2].X)-3, int(triangle.points[2].Y)-3, 6, 6, 0xFFFFFF00)
 		}
 
 	}
@@ -123,7 +123,7 @@ func update() {
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
-	//currentMesh.rotation.Y += 0.01
+	currentMesh.rotation.Y += 0.01
 	//currentMesh.rotation.X += 0.005
 	//currentMesh.rotation.Z += 0.01
 
@@ -198,9 +198,9 @@ func update() {
 		// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
 		flatShadePercent := -faceNormal.dot(globalLight.direction)
 		projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
-		projectedTriangle.points[0] = vec2{int(projectedPoints[0].X), int(projectedPoints[0].Y)}
-		projectedTriangle.points[1] = vec2{int(projectedPoints[1].X), int(projectedPoints[1].Y)}
-		projectedTriangle.points[2] = vec2{int(projectedPoints[2].X), int(projectedPoints[2].Y)}
+		projectedTriangle.points[0] = projectedPoints[0]
+		projectedTriangle.points[1] = projectedPoints[1]
+		projectedTriangle.points[2] = projectedPoints[2]
 		projectedTriangle.textCoords[0] = meshFace.AUV
 		projectedTriangle.textCoords[1] = meshFace.BUV
 		projectedTriangle.textCoords[2] = meshFace.CUV
