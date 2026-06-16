@@ -11,6 +11,7 @@ import (
 )
 
 // TODO: Move global state into a central structure
+// TODO: Add attribution for models (i.e 3D assets provided by Kenney.nl (CC0 License).)
 
 const (
 	FPS                      = 60
@@ -54,13 +55,13 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/cube.png")
+	err = loadPngTextureData("./assets/colormap.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/sedan.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -126,8 +127,8 @@ func update() {
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
-	//currentMesh.rotation.Y += 0.01
-	currentMesh.rotation.X += 0.005
+	currentMesh.rotation.Y += 0.01
+	//currentMesh.rotation.X += 0.005
 	//currentMesh.rotation.Z += 0.01
 
 	//currentMesh.scale.X += 0.002
