@@ -15,10 +15,11 @@ type face struct {
 
 // triangle stores actual vec2 points of the triangle projected onto the screen
 type triangle struct {
-	points     [3]vec4
-	textCoords [3]tex2
-	color      uint32
-	avgDepth   float64
+	points           [3]vec4
+	textCoords       [3]tex2
+	color            uint32
+	avgDepth         float64
+	flatShadePercent float64
 }
 
 func intSwap(a, b *int) {
@@ -89,7 +90,7 @@ func fillFlatTopTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
 	}
 }
 
-func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2 float64, texture []uint32) {
+func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, flatShadePercent float64, texture []uint32) {
 	// Triangles vertices need to be sorted by the Y component here too
 	// But when we swap not only do we need X and Y, we also have to swap the UV coordinates
 	if y0 > y1 {
@@ -144,7 +145,7 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 	}
 	// For every scanline
 	if y1-y0 != 0 {
-		for y := y0; y < y1; y++ {
+		for y := y0; y <= y1; y++ {
 			// The xStart and xEnd come from point-slope formula
 			// y-y1 = m(x-x1)
 			// (y-y1)/m = x-x1
@@ -155,7 +156,7 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV)
+				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
@@ -171,14 +172,14 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 	}
 	// For every scanline
 	if y2-y1 != 0 {
-		for y := y1; y < y2; y++ {
+		for y := y1; y <= y2; y++ {
 			xStart := int(x1) + int(math.Round(float64(y-y1)*inverseSlope1))
 			xEnd := int(x0) + int(math.Round(float64(y-y0)*inverseSlope2))
 			if xEnd < xStart {
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV)
+				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 

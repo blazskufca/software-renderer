@@ -54,16 +54,16 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/f22.png")
+	err = loadPngTextureData("./assets/cube.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
-	if err != nil {
-		return fmt.Errorf("failed to load obj: %w", err)
-	}
+	currentMesh, err = newMeshFromFromFile("./assets/cube.obj")
+	//if err != nil {
+	//	return fmt.Errorf("failed to load obj: %w", err)
+	//}
 	//currentMesh = newCubeMesh()
 	return nil
 }
@@ -82,8 +82,7 @@ func render(r *sdl.Renderer) error {
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].u, triangle.textCoords[0].v,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].u, triangle.textCoords[1].v,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].u, triangle.textCoords[2].v,
-				meshTexture,
-			)
+				triangle.flatShadePercent, meshTexture)
 		}
 
 		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE || renderMethod == RENDER_TEXTURED_WIRE {
@@ -127,8 +126,8 @@ func update() {
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
-	currentMesh.rotation.Y += 0.01
-	//currentMesh.rotation.X += 0.005
+	//currentMesh.rotation.Y += 0.01
+	currentMesh.rotation.X += 0.005
 	//currentMesh.rotation.Z += 0.01
 
 	//currentMesh.scale.X += 0.002
@@ -202,6 +201,7 @@ func update() {
 		// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
 		flatShadePercent := -faceNormal.dot(globalLight.direction)
 		projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
+		projectedTriangle.flatShadePercent = flatShadePercent
 		projectedTriangle.points[0] = projectedPoints[0]
 		projectedTriangle.points[1] = projectedPoints[1]
 		projectedTriangle.points[2] = projectedPoints[2]

@@ -95,7 +95,7 @@ func clampInt(value, min, max int) int {
 	return value
 }
 
-func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2) {
+func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2, flatShadePercent float64) {
 	p := vec2{x, y}
 	aVec2 := vec2FromVec4(a)
 	bVec2 := vec2FromVec4(b)
@@ -113,10 +113,13 @@ func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2) {
 	interpolatedU /= interpolatedReciprocalW
 	interpolatedV /= interpolatedReciprocalW
 	// UV is always between 0 and 1 so we need to scale them to texture resolution
-	texX := clampInt(int(math.Round(interpolatedU*float64(textureWidth))), 0, textureWidth-1)
-	texY := clampInt(int(math.Round(interpolatedV*float64(textureHeight))), 0, textureHeight-1)
+	// The overflows here come from the fact that we truncate to (integer) pixels
+	// On the border of a triangle a pixel might be outside a triangle which throws the barycentric weights (become bigger than 1)
+	// Which then tries to fetch texel outside of bounds of texture array
+	texX := int(math.Abs(interpolatedU*float64(textureWidth))) % textureWidth
+	texY := int(math.Abs(interpolatedV*float64(textureHeight))) % textureHeight
 
-	drawPixel(x, y, texture[(texY*textureWidth)+texX])
+	drawPixel(x, y, lightApplyIntensity(texture[(texY*textureWidth)+texX], flatShadePercent))
 
 }
 
