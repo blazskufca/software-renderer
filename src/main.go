@@ -1,11 +1,9 @@
 package main
 
 import (
-	"cmp"
 	"fmt"
 	"log"
 	"math"
-	"slices"
 
 	"github.com/veandco/go-sdl2/sdl"
 )
@@ -23,6 +21,7 @@ var (
 	windowWidth        = 800
 	windowHeight       = 600
 	colorBuffer        []uint32
+	zBuffer            []float64
 	colorBufferTexture *sdl.Texture
 	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
@@ -36,6 +35,7 @@ var (
 func setup(r *sdl.Renderer) error {
 	var err error
 	colorBuffer = make([]uint32, windowWidth*windowHeight)
+	zBuffer = make([]float64, windowWidth*windowHeight)
 	colorBufferTexture, err = r.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32), sdl.TEXTUREACCESS_STREAMING, int32(windowWidth), int32(windowHeight))
 	if err != nil {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
@@ -61,7 +61,7 @@ func setup(r *sdl.Renderer) error {
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/sedan.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/race.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -73,9 +73,11 @@ func render(r *sdl.Renderer) error {
 	for i := 0; i < len(trianglesToRender); i++ {
 		triangle := trianglesToRender[i]
 		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
-			drawFilledTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
-				int(triangle.points[1].X), int(triangle.points[1].Y),
-				int(triangle.points[2].X), int(triangle.points[2].Y), triangle.color)
+			drawFilledTriangle(
+				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
+				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
+				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
+				triangle.color)
 		}
 
 		if renderMethod == RENDER_TEXTURED || renderMethod == RENDER_TEXTURED_WIRE {
@@ -102,7 +104,10 @@ func render(r *sdl.Renderer) error {
 	if err != nil {
 		return err
 	}
+	// Clear color buffer
 	clearColorBuffer(0xFF000000)
+	// Clear Z-buffer
+	clearZBuffer(1)
 	r.Present()
 	trianglesToRender = nil
 	return nil
@@ -135,6 +140,7 @@ func update() {
 	//currentMesh.scale.Y += 0.001
 	//currentMesh.translation.X += 0.01
 	currentMesh.translation.Z = 5
+	currentMesh.translation.Y = -1.5
 	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
 	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
 	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
@@ -212,10 +218,10 @@ func update() {
 		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
 	}
-	// Painters algorithm
-	slices.SortFunc(trianglesToRender, func(a, b triangle) int {
-		return cmp.Compare(b.avgDepth, a.avgDepth)
-	})
+	//// Painters algorithm
+	//slices.SortFunc(trianglesToRender, func(a, b triangle) int {
+	//	return cmp.Compare(b.avgDepth, a.avgDepth)
+	//})
 
 }
 

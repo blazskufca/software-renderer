@@ -68,6 +68,14 @@ func clearColorBuffer(newColor uint32) {
 	}
 }
 
+func clearZBuffer(newZ float64) {
+	for y := 0; y < windowHeight; y++ {
+		for x := 0; x < windowWidth; x++ {
+			zBuffer[(y*windowWidth)+x] = newZ
+		}
+	}
+}
+
 func renderColorBuffer(r *sdl.Renderer) error {
 	err := colorBufferTexture.Update(
 		nil,

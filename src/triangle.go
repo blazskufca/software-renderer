@@ -34,85 +34,178 @@ func floatSwap(a, b *float64) {
 	*b = tmp
 }
 
-func drawFilledTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
-	// Sort vertices y0 < y1 < y2
+//	func drawFilledTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
+//		// Sort vertices y0 < y1 < y2
+//		if y0 > y1 {
+//			intSwap(&y0, &y1)
+//			intSwap(&x0, &x1)
+//		}
+//		if y1 > y2 {
+//			intSwap(&y1, &y2)
+//			intSwap(&x1, &x2)
+//		}
+//		if y0 > y1 {
+//			intSwap(&y0, &y1)
+//			intSwap(&x0, &x1)
+//		}
+//
+//		// There is no bottom triangle if the ys are equal
+//		if y1 == y2 {
+//			fillFlatBottomTriangle(x0, y0, x1, y1, x2, y2, color)
+//		} else if y0 == y1 {
+//			fillFlatTopTriangle(x0, y0, x1, y1, x2, y2, color)
+//		} else {
+//			// Calculate Mx, My using triangle similarity
+//			My := y1
+//			Mx := (((x2 - x0) * (y1 - y0)) / (y2 - y0)) + x0
+//
+//			fillFlatBottomTriangle(x0, y0, x1, y1, Mx, My, color)
+//			fillFlatTopTriangle(x1, y1, Mx, My, x2, y2, color)
+//		}
+//	}
+//func fillFlatBottomTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
+//	// Find the slop for both triangle legs
+//	// Because we use scanline fill, Y is our independent so we are really looking for dX/dY, inverse of the slope
+//	inverseSlope1 := float64(x1-x0) / float64(y1-y0)
+//	inverseSlope2 := float64(x2-x0) / float64(y2-y0)
+//
+//	xStart, xEnd := float64(x0), float64(x0)
+//	// Loop thorough all the scanlines
+//	for y := y0; y <= y2; y++ {
+//		drawLine(int(math.Round(xStart)), y, int(math.Round(xEnd)), y, color)
+//		xStart += inverseSlope1
+//		xEnd += inverseSlope2
+//	}
+//}
+//
+//func fillFlatTopTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
+//	inverseSlope1 := float64(x2-x0) / float64(y2-y0)
+//	inverseSlope2 := float64(x2-x1) / float64(y2-y1)
+//	xStart, xEnd := float64(x2), float64(x2)
+//	for y := y2; y >= y0; y-- {
+//		drawLine(int(math.Round(xStart)), y, int(math.Round(xEnd)), y, color)
+//		xStart -= inverseSlope1
+//		xEnd -= inverseSlope2
+//	}
+//}
+
+func drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 float64, color uint32) {
+	// Snap screen coords to integers, like the C reference (keep z/w as float for depth)
+	x0, y0 := int(x0f), int(y0f)
+	x1, y1 := int(x1f), int(y1f)
+	x2, y2 := int(x2f), int(y2f)
+
 	if y0 > y1 {
-		intSwap(&y0, &y1)
 		intSwap(&x0, &x1)
+		intSwap(&y0, &y1)
+		floatSwap(&z0, &z1)
+		floatSwap(&w0, &w1)
 	}
 	if y1 > y2 {
-		intSwap(&y1, &y2)
 		intSwap(&x1, &x2)
+		intSwap(&y1, &y2)
+		floatSwap(&z1, &z2)
+		floatSwap(&w1, &w2)
 	}
 	if y0 > y1 {
-		intSwap(&y0, &y1)
 		intSwap(&x0, &x1)
+		intSwap(&y0, &y1)
+		floatSwap(&z0, &z1)
+		floatSwap(&w0, &w1)
 	}
 
-	// There is no bottom triangle if the ys are equal
-	if y1 == y2 {
-		fillFlatBottomTriangle(x0, y0, x1, y1, x2, y2, color)
-	} else if y0 == y1 {
-		fillFlatTopTriangle(x0, y0, x1, y1, x2, y2, color)
-	} else {
-		// Calculate Mx, My using triangle similarity
-		My := y1
-		Mx := (((x2 - x0) * (y1 - y0)) / (y2 - y0)) + x0
+	pointA := vec4{float64(x0), float64(y0), z0, w0}
+	pointB := vec4{float64(x1), float64(y1), z1, w1}
+	pointC := vec4{float64(x2), float64(y2), z2, w2}
 
-		fillFlatBottomTriangle(x0, y0, x1, y1, Mx, My, color)
-		fillFlatTopTriangle(x1, y1, Mx, My, x2, y2, color)
+	// top half
+	var invSlope1, invSlope2 float64
+	if y1-y0 != 0 {
+		invSlope1 = float64(x1-x0) / math.Abs(float64(y1-y0))
+	}
+	if y2-y0 != 0 {
+		invSlope2 = float64(x2-x0) / math.Abs(float64(y2-y0))
+	}
+	if y1-y0 != 0 {
+		for y := y0; y <= y1; y++ {
+			xStart := int(float64(x1) + float64(y-y1)*invSlope1) // single truncation, no Round
+			xEnd := int(float64(x0) + float64(y-y0)*invSlope2)
+			if xEnd < xStart {
+				intSwap(&xStart, &xEnd)
+			}
+			for x := xStart; x < xEnd; x++ {
+				drawTrianglePixel(x, y, color, pointA, pointB, pointC)
+			}
+		}
+	}
+	// bottom half
+	invSlope1, invSlope2 = 0, 0
+	if y2-y1 != 0 {
+		invSlope1 = float64(x2-x1) / math.Abs(float64(y2-y1))
+	}
+	if y2-y0 != 0 {
+		invSlope2 = float64(x2-x0) / math.Abs(float64(y2-y0))
+	}
+	if y2-y1 != 0 {
+		for y := y1; y <= y2; y++ {
+			xStart := int(float64(x1) + float64(y-y1)*invSlope1)
+			xEnd := int(float64(x0) + float64(y-y0)*invSlope2)
+			if xEnd < xStart {
+				intSwap(&xStart, &xEnd)
+			}
+			for x := xStart; x < xEnd; x++ {
+				drawTrianglePixel(x, y, color, pointA, pointB, pointC)
+			}
+		}
 	}
 }
 
-func fillFlatBottomTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
-	// Find the slop for both triangle legs
-	// Because we use scanline fill, Y is our independent so we are really looking for dX/dY, inverse of the slope
-	inverseSlope1 := float64(x1-x0) / float64(y1-y0)
-	inverseSlope2 := float64(x2-x0) / float64(y2-y0)
+func drawTrianglePixel(x, y int, color uint32, a, b, c vec4) {
+	p := vec2{x, y}
+	aVec2 := vec2FromVec4(a)
+	bVec2 := vec2FromVec4(b)
+	cVec2 := vec2FromVec4(c)
 
-	xStart, xEnd := float64(x0), float64(x0)
-	// Loop thorough all the scanlines
-	for y := y0; y <= y2; y++ {
-		drawLine(int(math.Round(xStart)), y, int(math.Round(xEnd)), y, color)
-		xStart += inverseSlope1
-		xEnd += inverseSlope2
-	}
-}
+	weights := barycentricWeights(aVec2, bVec2, cVec2, p)
+	alpha, beta, gamma := weights.X, weights.Y, weights.Z
+	interpolatedReciprocalW := (1/a.W)*alpha + (1/b.W)*beta + (1/c.W)*gamma
+	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-func fillFlatTopTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
-	inverseSlope1 := float64(x2-x0) / float64(y2-y0)
-	inverseSlope2 := float64(x2-x1) / float64(y2-y1)
-	xStart, xEnd := float64(x2), float64(x2)
-	for y := y2; y >= y0; y-- {
-		drawLine(int(math.Round(xStart)), y, int(math.Round(xEnd)), y, color)
-		xStart -= inverseSlope1
-		xEnd -= inverseSlope2
+	if interpolatedReciprocalW < zBuffer[(windowWidth*y)+x] {
+		drawPixel(x, y, color)
+		// Update the Z-buffer with 1/w for current pixel
+		zBuffer[(windowWidth*y)+x] = interpolatedReciprocalW
 	}
+
 }
 
 func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, flatShadePercent float64, texture []uint32) {
+	ix0, iy0 := int(x0), int(y0)
+	ix1, iy1 := int(x1), int(y1)
+	ix2, iy2 := int(x2), int(y2)
+
 	// Triangles vertices need to be sorted by the Y component here too
 	// But when we swap not only do we need X and Y, we also have to swap the UV coordinates
-	if y0 > y1 {
-		floatSwap(&y0, &y1)
-		floatSwap(&x0, &x1)
+	if iy0 > iy1 {
+		intSwap(&iy0, &iy1)
+		intSwap(&ix0, &ix1)
 		floatSwap(&u0, &u1)
 		floatSwap(&v0, &v1)
 		floatSwap(&z0, &z1)
 		floatSwap(&w0, &w1)
 
 	}
-	if y1 > y2 {
-		floatSwap(&y1, &y2)
-		floatSwap(&x1, &x2)
+	if iy1 > iy2 {
+		intSwap(&iy1, &iy2)
+		intSwap(&ix1, &ix2)
 		floatSwap(&u1, &u2)
 		floatSwap(&v1, &v2)
 		floatSwap(&z1, &z2)
 		floatSwap(&w1, &w2)
 	}
-	if y0 > y1 {
-		floatSwap(&y0, &y1)
-		floatSwap(&x0, &x1)
+	if iy0 > iy1 {
+		intSwap(&iy0, &iy1)
+		intSwap(&ix0, &ix1)
 		floatSwap(&u0, &u1)
 		floatSwap(&v0, &v1)
 		floatSwap(&z0, &z1)
@@ -126,9 +219,9 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 	v2 = 1 - v2
 
 	// Vector points
-	pointA := vec4{x0, y0, z0, w0}
-	pointB := vec4{x1, y1, z1, w1}
-	pointC := vec4{x2, y2, z2, w2}
+	pointA := vec4{float64(ix0), float64(iy0), z0, w0}
+	pointB := vec4{float64(ix1), float64(iy1), z1, w1}
+	pointC := vec4{float64(ix2), float64(iy2), z2, w2}
 	AUV := tex2{u0, v0}
 	BUV := tex2{u1, v1}
 	CUV := tex2{u2, v2}
@@ -137,49 +230,49 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 	// Inverse slope is dX/dy
 	var inverseSlope1 float64
 	var inverseSlope2 float64
-	if (y1 - y0) != 0 {
-		inverseSlope1 = (float64(x1) - float64(x0)) / math.Abs(float64(y1)-float64(y0)) // "Left" leg of the triangle
+	if (iy1 - iy0) != 0 {
+		inverseSlope1 = float64(ix1-ix0) / math.Abs(float64(iy1-iy0)) // "Left" leg of the triangle
 	}
-	if (y2 - y0) != 0 {
-		inverseSlope2 = (float64(x2) - float64(x0)) / math.Abs(float64(y2)-float64(y0)) // "Right" leg of the triangle
+	if (iy2 - iy0) != 0 {
+		inverseSlope2 = float64(ix2-ix0) / math.Abs(float64(iy2-iy0)) // "Right" leg of the triangle
 	}
 	// For every scanline
-	if y1-y0 != 0 {
-		for y := y0; y <= y1; y++ {
+	if iy1-iy0 != 0 {
+		for y := iy0; y <= iy1; y++ {
 			// The xStart and xEnd come from point-slope formula
 			// y-y1 = m(x-x1)
 			// (y-y1)/m = x-x1
 			// x =  x1 + (y-y1)/m
-			xStart := int(x1) + int(math.Round(float64(y-y1)*inverseSlope1))
-			xEnd := int(x0) + int(math.Round(float64(y-y0)*inverseSlope2))
+			xStart := int(float64(ix1) + float64(y-iy1)*inverseSlope1)
+			xEnd := int(float64(ix0) + float64(y-iy0)*inverseSlope2)
 			if xEnd < xStart {
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
+				drawTexel(x, y, texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
 		}
 	}
 	// Render the flat top triangle
-	inverseSlope1, inverseSlope1 = 0.0, 0.0
-	if (y2 - y1) != 0 {
-		inverseSlope1 = (float64(x2) - float64(x1)) / math.Abs(float64(y2)-float64(y1)) // "Left" leg of the triangle
+	inverseSlope1, inverseSlope2 = 0.0, 0.0
+	if (iy2 - iy1) != 0 {
+		inverseSlope1 = float64(ix2-ix1) / math.Abs(float64(iy2-iy1)) // "Left" leg of the triangle
 	}
-	if (y2 - y0) != 0 {
-		inverseSlope2 = (float64(x2) - float64(x0)) / math.Abs(float64(y2)-float64(y0)) // "Right" leg of the triangle
+	if (iy2 - iy0) != 0 {
+		inverseSlope2 = float64(ix2-ix0) / math.Abs(float64(iy2-iy0)) // "Right" leg of the triangle
 	}
 	// For every scanline
-	if y2-y1 != 0 {
-		for y := y1; y <= y2; y++ {
-			xStart := int(x1) + int(math.Round(float64(y-y1)*inverseSlope1))
-			xEnd := int(x0) + int(math.Round(float64(y-y0)*inverseSlope2))
+	if iy2-iy1 != 0 {
+		for y := iy1; y <= iy2; y++ {
+			xStart := int(float64(ix1) + float64(y-iy1)*inverseSlope1)
+			xEnd := int(float64(ix0) + float64(y-iy0)*inverseSlope2)
 			if xEnd < xStart {
 				intSwap(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				drawTexel(x, int(y), texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
+				drawTexel(x, y, texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 

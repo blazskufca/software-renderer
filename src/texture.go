@@ -119,8 +119,16 @@ func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2, fla
 	texX := int(math.Abs(interpolatedU*float64(textureWidth))) % textureWidth
 	texY := int(math.Abs(interpolatedV*float64(textureHeight))) % textureHeight
 
-	drawPixel(x, y, lightApplyIntensity(texture[(texY*textureWidth)+texX], flatShadePercent))
+	// Pixels closer to the viewer need to bigger than the ones further away
+	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
+	// Only draw pixels if depth value if less than the one previously stored in the Z-buffer
+	if interpolatedReciprocalW < zBuffer[(windowWidth*y)+x] {
+		drawPixel(x, y, lightApplyIntensity(texture[(texY*textureWidth)+texX], flatShadePercent))
+		// Update the Z-buffer with 1/w for current pixel
+		zBuffer[(windowWidth*y)+x] = interpolatedReciprocalW
+
+	}
 }
 
 func loadPngTextureData(path string) error {
