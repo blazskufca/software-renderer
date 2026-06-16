@@ -54,17 +54,17 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/cube.png")
+	err = loadPngTextureData("./assets/f22.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	//currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
-	//if err != nil {
-	//	return fmt.Errorf("failed to load obj: %w", err)
-	//}
-	currentMesh = newCubeMesh()
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	if err != nil {
+		return fmt.Errorf("failed to load obj: %w", err)
+	}
+	//currentMesh = newCubeMesh()
 	return nil
 }
 
@@ -143,9 +143,9 @@ func update() {
 		// Face index into the vertices array
 		meshFace := currentMesh.faces[i]
 		facesVertices := make([]vec3, 3)
-		facesVertices[0] = currentMesh.vertices[meshFace.a-1]
-		facesVertices[1] = currentMesh.vertices[meshFace.b-1]
-		facesVertices[2] = currentMesh.vertices[meshFace.c-1]
+		facesVertices[0] = currentMesh.vertices[meshFace.a]
+		facesVertices[1] = currentMesh.vertices[meshFace.b]
+		facesVertices[2] = currentMesh.vertices[meshFace.c]
 		// order matters
 		// Scale -> rotate -> translate
 

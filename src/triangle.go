@@ -119,6 +119,11 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 
 	}
 
+	// Flip the V to account for inverted UV coordinates, V0 is top left for us
+	v0 = 1 - v0
+	v1 = 1 - v1
+	v2 = 1 - v2
+
 	// Vector points
 	pointA := vec4{x0, y0, z0, w0}
 	pointB := vec4{x1, y1, z1, w1}

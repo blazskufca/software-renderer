@@ -74,6 +74,7 @@ func newCubeMesh() mesh {
 func newMeshFromFromFile(path string) (mesh, error) {
 	var v []vec3
 	var fa []face
+	var vt []tex2
 
 	f, err := os.Open(path)
 	if err != nil {
@@ -119,8 +120,11 @@ func newMeshFromFromFile(path string) (mesh, error) {
 				return mesh{}, fmt.Errorf("malformed face: expected at least 3 vertices")
 			}
 			xStr := strings.Split(fields[1], "/")[0]
+			xVt := strings.Split(fields[1], "/")[1]
 			yStr := strings.Split(fields[2], "/")[0]
+			yVt := strings.Split(fields[2], "/")[1]
 			zStr := strings.Split(fields[3], "/")[0]
+			zVt := strings.Split(fields[3], "/")[1]
 
 			xInt, err := strconv.Atoi(xStr)
 			if err != nil {
@@ -134,8 +138,32 @@ func newMeshFromFromFile(path string) (mesh, error) {
 			if err != nil {
 				return mesh{}, err
 			}
-
-			fa = append(fa, face{xInt, yInt, zInt, tex2{}, tex2{}, tex2{}, 0xFFFFFFFF})
+			xVtInt, err := strconv.Atoi(xVt)
+			if err != nil {
+				return mesh{}, err
+			}
+			yVtInt, err := strconv.Atoi(yVt)
+			if err != nil {
+				return mesh{}, err
+			}
+			zVtInt, err := strconv.Atoi(zVt)
+			if err != nil {
+				return mesh{}, err
+			}
+			fa = append(fa, face{xInt - 1, yInt - 1, zInt - 1, vt[xVtInt-1], vt[yVtInt-1], vt[zVtInt-1], 0xFFFFFFFF})
+		case "vt":
+			if len(fields[1:]) != 2 {
+				return mesh{}, fmt.Errorf("malformed texture vertex: got %d coordinates", len(fields))
+			}
+			parsedU, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return mesh{}, err
+			}
+			parsedV, err := strconv.ParseFloat(fields[2], 64)
+			if err != nil {
+				return mesh{}, err
+			}
+			vt = append(vt, tex2{parsedU, parsedV})
 
 		default:
 			log.Printf("Not implemented parsing line type %q", fields[0])
