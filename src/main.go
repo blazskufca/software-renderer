@@ -12,7 +12,7 @@ import (
 // TODO: Add attribution for models (i.e 3D assets provided by Kenney.nl (CC0 License).)
 
 const (
-	FPS                      = 60
+	FPS                      = 30
 	frameTargetTime   uint64 = 1000 / FPS
 	cubeNMeshVertices        = 8
 )
@@ -23,7 +23,6 @@ var (
 	colorBuffer        []uint32
 	zBuffer            []float64
 	colorBufferTexture *sdl.Texture
-	cameraPosition     vec3   = vec3{0, 0, 0}
 	previousFrameTime  uint64 = 0
 	trianglesToRender  []triangle
 	renderMethod             = RENDER_WIRE
@@ -55,13 +54,13 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/colormap.png")
+	err = loadPngTextureData("./assets/f22.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/race.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -109,7 +108,7 @@ func render(r *sdl.Renderer) error {
 	// Clear Z-buffer
 	clearZBuffer(1)
 	r.Present()
-	trianglesToRender = nil
+
 	return nil
 }
 
@@ -127,23 +126,26 @@ func update() {
 	if timeToWait > 0 && timeToWait <= frameTargetTime {
 		sdl.Delay(uint32(timeToWait))
 	}
-	trianglesToRender = make([]triangle, 0, len(currentMesh.faces))
+	trianglesToRender = trianglesToRender[:0]
 
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	previousFrameTime = now
-	currentMesh.rotation.Y += 0.01
-	//currentMesh.rotation.X += 0.005
-	//currentMesh.rotation.Z += 0.01
+	currentMesh.rotation.X += 0.006
+	currentMesh.rotation.Y += 0.00
+	currentMesh.rotation.Z += 0.00
 
 	//currentMesh.scale.X += 0.002
 	//currentMesh.scale.Y += 0.001
 	//currentMesh.translation.X += 0.01
-	currentMesh.translation.Z = 5
-	currentMesh.translation.Y = -1.5
+	currentMesh.translation.Z = 4
+	globalCamera.position.X += 0.008
+	globalCamera.position.Y += 0.008
+	//currentMesh.translation.Y = -1.5
 	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
 	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
 	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
+	viewMatrix := mat4LookAt(globalCamera.position, vec3{0, 0, 4}, vec3{0, 1, 0})
 
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
@@ -161,6 +163,7 @@ func update() {
 		worldMatrix = rotationMatrixY.mulMat4(worldMatrix)
 		worldMatrix = rotationMatrixX.mulMat4(worldMatrix)
 		worldMatrix = translationMatrix.mulMat4(worldMatrix)
+		worldMatrix = viewMatrix.mulMat4(worldMatrix)
 		var transformedVertexArr [3]vec4
 		for j := 0; j < 3; j++ {
 			transformedVertex := vec4FromVec3(facesVertices[j])
@@ -180,7 +183,8 @@ func update() {
 
 		if cullMethod == CULL_BACKFACE {
 			// Backface culling
-			cameraRayVec := cameraPosition.sub(vectorA)
+			origin := vec3{} // Camera position can change so we need a real 0, 0, 0
+			cameraRayVec := origin.sub(vectorA)
 
 			cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
 
@@ -218,11 +222,6 @@ func update() {
 		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
 		trianglesToRender = append(trianglesToRender, projectedTriangle)
 	}
-	//// Painters algorithm
-	//slices.SortFunc(trianglesToRender, func(a, b triangle) int {
-	//	return cmp.Compare(b.avgDepth, a.avgDepth)
-	//})
-
 }
 
 func processInput(running *bool) {

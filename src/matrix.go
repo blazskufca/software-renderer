@@ -150,3 +150,18 @@ func (m *mat4) mat4MulVec4Project(vec vec4) vec4 {
 	}
 	return result
 }
+
+func mat4LookAt(eye, target, up vec3) mat4 {
+	Z := target.sub(eye) // Forward vector Z pointing at the target
+	Z.normalize()        // We only care about the direction not magnitude
+	X := up.cross(Z)     // Right vector X
+	X.normalize()
+	Y := Z.cross(X) // Up vector Z - Already normalized because X and Y are already normalized
+
+	return mat4{m: [4][4]float64{
+		{X.X, X.Y, X.Z, -X.dot(eye)},
+		{Y.X, Y.Y, Y.Z, -Y.dot(eye)},
+		{Z.X, Z.Y, Z.Z, -Z.dot(eye)},
+		{0, 0, 0, 1},
+	}}
+}
