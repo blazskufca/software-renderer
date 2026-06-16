@@ -28,23 +28,23 @@ var (
 	// The order of the indexes matters...Clockwise orientation meas the face is facing outwards and opposite means its facing inwards
 	cubeMeshFaces = [nCubeFaces]face{
 		// front
-		{a: 1, b: 2, c: 3, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 1, b: 3, c: 4, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 0, b: 1, c: 2, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 0, b: 2, c: 3, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 		// right
-		{a: 4, b: 3, c: 5, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 4, b: 5, c: 6, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 3, b: 2, c: 4, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 3, b: 4, c: 5, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 		// back
-		{a: 6, b: 5, c: 7, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 6, b: 7, c: 8, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 5, b: 4, c: 6, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 5, b: 6, c: 7, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 		// left
-		{a: 8, b: 7, c: 2, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 8, b: 2, c: 1, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 7, b: 6, c: 1, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 7, b: 1, c: 0, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 		// top
-		{a: 2, b: 7, c: 5, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 2, b: 5, c: 3, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 1, b: 6, c: 4, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 1, b: 4, c: 2, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 		// bottom
-		{a: 6, b: 8, c: 1, AUV: tex2{0, 1}, BUV: tex2{0, 0}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
-		{a: 6, b: 1, c: 4, AUV: tex2{0, 1}, BUV: tex2{1, 0}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 5, b: 7, c: 0, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
+		{a: 5, b: 0, c: 3, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 	}
 	currentMesh mesh
 )
