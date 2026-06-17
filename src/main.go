@@ -29,6 +29,7 @@ var (
 	cullMethod               = CULL_BACKFACE
 	projectionMatrix   mat4  = mat4{}
 	globalLight        light = light{direction: vec3{0, 0, 1}}
+	deltaTime          float64
 )
 
 func setup(r *sdl.Renderer) error {
@@ -54,13 +55,13 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/f22.png")
+	err = loadPngTextureData("./assets/colormap.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/race.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -130,22 +131,23 @@ func update() {
 
 	now := sdl.GetTicks64()
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
+	deltaTime = float64(now-previousFrameTime) / 1000
 	previousFrameTime = now
-	currentMesh.rotation.X += 0.006
-	currentMesh.rotation.Y += 0.00
-	currentMesh.rotation.Z += 0.00
+	currentMesh.rotation.X += 0.6 * deltaTime
+	currentMesh.rotation.Y += 0.6 * deltaTime
+	currentMesh.rotation.Z += 0.6 * deltaTime
 
 	//currentMesh.scale.X += 0.002
 	//currentMesh.scale.Y += 0.001
 	//currentMesh.translation.X += 0.01
-	currentMesh.translation.Z = 4
-	globalCamera.position.X += 0.008
-	globalCamera.position.Y += 0.008
+	currentMesh.translation.Z = 5
+	//globalCamera.position.X += 0.008 * deltaTime
+	//globalCamera.position.Y += 0.008
 	//currentMesh.translation.Y = -1.5
 	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
 	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
 	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
-	viewMatrix := mat4LookAt(globalCamera.position, vec3{0, 0, 4}, vec3{0, 1, 0})
+	viewMatrix := mat4LookAt(globalCamera.position, globalCamera.position.add(vec3{0, 0, 1}), vec3{0, 1, 0})
 
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
