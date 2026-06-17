@@ -55,13 +55,13 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/colormap.png")
+	err = loadPngTextureData("./assets/f22.png")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/race.obj")
+	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
 	//if err != nil {
 	//	return fmt.Errorf("failed to load obj: %w", err)
 	//}
@@ -133,21 +133,33 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	deltaTime = float64(now-previousFrameTime) / 1000
 	previousFrameTime = now
-	currentMesh.rotation.X += 0.6 * deltaTime
-	currentMesh.rotation.Y += 0.6 * deltaTime
-	currentMesh.rotation.Z += 0.6 * deltaTime
+	currentMesh.rotation.X += math.Pi / 2 * deltaTime
+	currentMesh.rotation.Y += 0.0 * deltaTime
+	currentMesh.rotation.Z += 0.0 * deltaTime
+	currentMesh.translation.Z = 5
+	//globalCamera.position.X += 2.0 * deltaTime
+	//globalCamera.position.Y += 2.0 * deltaTime
 
 	//currentMesh.scale.X += 0.002
 	//currentMesh.scale.Y += 0.001
 	//currentMesh.translation.X += 0.01
-	currentMesh.translation.Z = 5
+
 	//globalCamera.position.X += 0.008 * deltaTime
 	//globalCamera.position.Y += 0.008
 	//currentMesh.translation.Y = -1.5
 	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
 	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
 	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
-	viewMatrix := mat4LookAt(globalCamera.position, globalCamera.position.add(vec3{0, 0, 1}), vec3{0, 1, 0})
+	// Create a view matrix
+	// Start the target as normalized Z axis
+	target := vec3{Z: 1}
+
+	cameraYaw := mat4MakeRotationY(globalCamera.yawAngle)
+	globalCamera.direction = vec3FromVec4(cameraYaw.mulVec4(vec4FromVec3(target)))
+
+	target = globalCamera.position.add(globalCamera.direction)
+
+	viewMatrix := mat4LookAt(globalCamera.position, target, vec3{0, 1, 0})
 
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
@@ -252,8 +264,22 @@ func processInput(running *bool) {
 					renderMethod = RENDER_TEXTURED_WIRE
 				case sdl.K_c:
 					cullMethod = CULL_BACKFACE
-				case sdl.K_d:
+				case sdl.K_x:
 					cullMethod = CULL_NONE
+				case sdl.K_UP:
+					globalCamera.position.Y += 3 * deltaTime
+				case sdl.K_DOWN:
+					globalCamera.position.Y -= 3 * deltaTime
+				case sdl.K_a:
+					globalCamera.yawAngle += 1 * deltaTime
+				case sdl.K_d:
+					globalCamera.yawAngle -= 1 * deltaTime
+				case sdl.K_w:
+					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
+					globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)
+				case sdl.K_s:
+					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
+					globalCamera.position = globalCamera.position.sub(globalCamera.forwardVelocity)
 				}
 			}
 		}
