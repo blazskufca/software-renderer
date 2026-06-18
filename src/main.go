@@ -12,7 +12,7 @@ import (
 // TODO: Add attribution for models (i.e 3D assets provided by Kenney.nl (CC0 License).)
 
 const (
-	FPS                      = 30
+	FPS                      = 60
 	frameTargetTime   uint64 = 1000 / FPS
 	cubeNMeshVertices        = 8
 )
@@ -41,8 +41,10 @@ func setup(r *sdl.Renderer) error {
 		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
 	}
 
-	FOV := math.Pi / 3 // FOV needs to be in radians -> math.pi/3 = 60deg
-	aspectRatio := float64(windowHeight) / float64(windowWidth)
+	FOVY := math.Pi / 3 // FOV needs to be in radians -> math.pi/3 = 60deg
+	aspectRatioY := float64(windowHeight) / float64(windowWidth)
+	aspectRatioX := float64(windowWidth) / float64(windowHeight)
+	FOVX := 2 * (math.Atan(math.Tan(FOVY/2) * aspectRatioX))
 	// We've randomly picked zNear and zFar as these valeues
 	zNear, zFar := 0.1, 100.0
 	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
@@ -55,16 +57,17 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/f22.png")
+	err = loadPngTextureData("./assets/Diffuse.jpg")
 	if err != nil {
 		return err
 	}
 	// Initialize the perspective projection matrix
-	projectionMatrix = mat4MakePerspective(FOV, aspectRatio, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/f22.obj")
-	//if err != nil {
-	//	return fmt.Errorf("failed to load obj: %w", err)
-	//}
+	projectionMatrix = mat4MakePerspective(FOVY, aspectRatioY, zNear, zFar)
+	initFrustumPlanes(FOVX, FOVY, zNear, zFar)
+	currentMesh, err = newMeshFromFromFile("./assets/f18-superhornet.obj")
+	if err != nil {
+		return fmt.Errorf("failed to load obj: %w", err)
+	}
 	//currentMesh = newCubeMesh()
 	return nil
 }
@@ -133,9 +136,10 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	deltaTime = float64(now-previousFrameTime) / 1000
 	previousFrameTime = now
-	currentMesh.rotation.X += math.Pi / 2 * deltaTime
-	currentMesh.rotation.Y += 0.0 * deltaTime
-	currentMesh.rotation.Z += 0.0 * deltaTime
+	//currentMesh.rotation.X += math.Pi / 2 * deltaTime
+	currentMesh.rotation.Y += math.Pi / 2 * deltaTime
+	//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
+	//currentMesh.rotation.Z += math.Pi / 2 * deltaTime
 	currentMesh.translation.Z = 5
 	//globalCamera.position.X += 2.0 * deltaTime
 	//globalCamera.position.Y += 2.0 * deltaTime
@@ -163,8 +167,12 @@ func update() {
 
 	for i := 0; i < len(currentMesh.faces); i++ {
 		// Face index into the vertices array
+		//if i != 4 {
+		//	continue
+		//}
 		meshFace := currentMesh.faces[i]
-		facesVertices := make([]vec3, 3)
+		facesVertices := [3]vec3{}
+
 		facesVertices[0] = currentMesh.vertices[meshFace.a]
 		facesVertices[1] = currentMesh.vertices[meshFace.b]
 		facesVertices[2] = currentMesh.vertices[meshFace.c]
@@ -208,33 +216,49 @@ func update() {
 			}
 		}
 
-		var projectedPoints [3]vec4
-		for j := 0; j < len(transformedVertexArr); j++ {
-			projectedPoints[j] = projectionMatrix.mat4MulVec4Project(transformedVertexArr[j])
-
-			// Scale into the view
-			projectedPoints[j].X *= float64(windowWidth / 2)
-			projectedPoints[j].Y *= float64(windowHeight / 2)
-
-			// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
-			projectedPoints[j].Y *= -1
-			// Translate the projected point into the middle of the screen
-			projectedPoints[j].X += float64(windowWidth / 2)
-			projectedPoints[j].Y += float64(windowHeight / 2)
+		// Clipping stage
+		poly := newPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
+		poly.clipPolygon()
+		// Break the clipped polygon apart into triangles (fan triangulation)
+		var clippedTriangles [maximumNumberOfPolygonTriangles]triangle
+		var numberOfClippedTriangles int = poly.numberOfVertices - 2
+		for t := 0; t < numberOfClippedTriangles; t++ {
+			tr := triangle{}
+			tr.points = [3]vec4{vec4FromVec3(poly.vertices[0]), vec4FromVec3(poly.vertices[t+1]), vec4FromVec3(poly.vertices[t+2])}
+			tr.textCoords = [3]tex2{poly.texCoords[0], poly.texCoords[t+1], poly.texCoords[t+2]}
+			clippedTriangles[t] = tr
 		}
-		var projectedTriangle triangle
-		// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
-		flatShadePercent := -faceNormal.dot(globalLight.direction)
-		projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
-		projectedTriangle.flatShadePercent = flatShadePercent
-		projectedTriangle.points[0] = projectedPoints[0]
-		projectedTriangle.points[1] = projectedPoints[1]
-		projectedTriangle.points[2] = projectedPoints[2]
-		projectedTriangle.textCoords[0] = meshFace.AUV
-		projectedTriangle.textCoords[1] = meshFace.BUV
-		projectedTriangle.textCoords[2] = meshFace.CUV
-		projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
-		trianglesToRender = append(trianglesToRender, projectedTriangle)
+		for i := 0; i < numberOfClippedTriangles; i++ {
+			clippedTriangle := clippedTriangles[i]
+
+			var projectedPoints [3]vec4
+			for j := 0; j < len(transformedVertexArr); j++ {
+				projectedPoints[j] = projectionMatrix.mat4MulVec4Project(clippedTriangle.points[j])
+
+				// Scale into the view
+				projectedPoints[j].X *= float64(windowWidth / 2)
+				projectedPoints[j].Y *= float64(windowHeight / 2)
+
+				// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
+				projectedPoints[j].Y *= -1
+				// Translate the projected point into the middle of the screen
+				projectedPoints[j].X += float64(windowWidth / 2)
+				projectedPoints[j].Y += float64(windowHeight / 2)
+			}
+			var projectedTriangle triangle
+			// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
+			flatShadePercent := -faceNormal.dot(globalLight.direction)
+			projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
+			projectedTriangle.flatShadePercent = flatShadePercent
+			projectedTriangle.points[0] = projectedPoints[0]
+			projectedTriangle.points[1] = projectedPoints[1]
+			projectedTriangle.points[2] = projectedPoints[2]
+			projectedTriangle.textCoords[0] = clippedTriangle.textCoords[0]
+			projectedTriangle.textCoords[1] = clippedTriangle.textCoords[1]
+			projectedTriangle.textCoords[2] = clippedTriangle.textCoords[2]
+			projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
+			trianglesToRender = append(trianglesToRender, projectedTriangle)
+		}
 	}
 }
 
@@ -271,9 +295,9 @@ func processInput(running *bool) {
 				case sdl.K_DOWN:
 					globalCamera.position.Y -= 3 * deltaTime
 				case sdl.K_a:
-					globalCamera.yawAngle += 1 * deltaTime
+					globalCamera.yawAngle += 0.7 * deltaTime
 				case sdl.K_d:
-					globalCamera.yawAngle -= 1 * deltaTime
+					globalCamera.yawAngle -= 0.7 * deltaTime
 				case sdl.K_w:
 					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
 					globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)

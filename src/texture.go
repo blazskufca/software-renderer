@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"image"
+	_ "image/jpeg"
 	_ "image/png"
 	"math"
 	"os"
@@ -96,6 +97,9 @@ func clampInt(value, min, max int) int {
 }
 
 func drawTexel(x, y int, texture []uint32, a, b, c vec4, AUV, BUV, CUV tex2, flatShadePercent float64) {
+	if x < 0 || x >= windowWidth || y < 0 || y >= windowHeight {
+		return
+	}
 	p := vec2{x, y}
 	aVec2 := vec2FromVec4(a)
 	bVec2 := vec2FromVec4(b)
@@ -142,7 +146,7 @@ func loadPngTextureData(path string) error {
 	if err != nil {
 		return err
 	}
-	if fileFormat != "png" {
+	if fileFormat != "png" && fileFormat != "jpeg" {
 		return fmt.Errorf("unsupported file format: %s", fileFormat)
 	}
 
