@@ -57,7 +57,7 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/f22.png")
+	err = loadPngTextureData("./assets/Diffuse.jpg")
 	if err != nil {
 		return err
 	}
@@ -68,6 +68,7 @@ func setup(r *sdl.Renderer) error {
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
+	currentMesh.mirrorHorizontally()
 	//currentMesh = newCubeMesh()
 	return nil
 }

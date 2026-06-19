@@ -59,12 +59,25 @@ type mesh struct {
 	translation vec3
 }
 
+// mirrorHorizontally mirrors the mesh across the X axis in model space. Some
+// assets are UV-unwrapped with the opposite horizontal handedness to their
+// texture, so the texture renders mirrored left-to-right.
+func (m *mesh) mirrorHorizontally() {
+	for i := range m.vertices {
+		m.vertices[i].X = -m.vertices[i].X
+	}
+	for i := range m.faces {
+		m.faces[i].b, m.faces[i].c = m.faces[i].c, m.faces[i].b
+		m.faces[i].BUV, m.faces[i].CUV = m.faces[i].CUV, m.faces[i].BUV
+	}
+}
+
 func newMesh(vertices []vec3, faces []face, rotation, scale, translation vec3) mesh {
 	if scale == (vec3{}) {
 		scale = vec3{1.0, 1.0, 1.0}
 	}
 
-	return mesh{vertices, faces, rotation, scale, translation}
+	return mesh{vertices: vertices, faces: faces, rotation: rotation, scale: scale, translation: translation}
 }
 
 func newCubeMesh() mesh {
@@ -119,38 +132,32 @@ func newMeshFromFromFile(path string) (mesh, error) {
 			if len(fields) < 4 {
 				return mesh{}, fmt.Errorf("malformed face: expected at least 3 vertices")
 			}
-			xStr := strings.Split(fields[1], "/")[0]
-			xVt := strings.Split(fields[1], "/")[1]
-			yStr := strings.Split(fields[2], "/")[0]
-			yVt := strings.Split(fields[2], "/")[1]
-			zStr := strings.Split(fields[3], "/")[0]
-			zVt := strings.Split(fields[3], "/")[1]
-
-			xInt, err := strconv.Atoi(xStr)
-			if err != nil {
-				return mesh{}, err
+			n := len(fields) - 1
+			vIdx := make([]int, n)
+			vtIdx := make([]int, n)
+			for i := 0; i < n; i++ {
+				parts := strings.Split(fields[i+1], "/")
+				if len(parts) < 2 {
+					return mesh{}, fmt.Errorf("malformed face vertex %q: expected v/vt[/vn]", fields[i+1])
+				}
+				vi, err := strconv.Atoi(parts[0])
+				if err != nil {
+					return mesh{}, err
+				}
+				vti, err := strconv.Atoi(parts[1])
+				if err != nil {
+					return mesh{}, err
+				}
+				vIdx[i] = vi - 1
+				vtIdx[i] = vti - 1
 			}
-			yInt, err := strconv.Atoi(yStr)
-			if err != nil {
-				return mesh{}, err
+			for i := 1; i < n-1; i++ {
+				fa = append(fa, face{
+					vIdx[0], vIdx[i], vIdx[i+1],
+					vt[vtIdx[0]], vt[vtIdx[i]], vt[vtIdx[i+1]],
+					0xFFFFFFFF,
+				})
 			}
-			zInt, err := strconv.Atoi(zStr)
-			if err != nil {
-				return mesh{}, err
-			}
-			xVtInt, err := strconv.Atoi(xVt)
-			if err != nil {
-				return mesh{}, err
-			}
-			yVtInt, err := strconv.Atoi(yVt)
-			if err != nil {
-				return mesh{}, err
-			}
-			zVtInt, err := strconv.Atoi(zVt)
-			if err != nil {
-				return mesh{}, err
-			}
-			fa = append(fa, face{xInt - 1, yInt - 1, zInt - 1, vt[xVtInt-1], vt[yVtInt-1], vt[zVtInt-1], 0xFFFFFFFF})
 		case "vt":
 			if len(fields[1:]) != 2 {
 				return mesh{}, fmt.Errorf("malformed texture vertex: got %d coordinates", len(fields))
