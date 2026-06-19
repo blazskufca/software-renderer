@@ -46,17 +46,24 @@ var (
 		{a: 5, b: 7, c: 0, AUV: tex2{0, 0}, BUV: tex2{0, 1}, CUV: tex2{1, 1}, color: 0xFFFFFFFF},
 		{a: 5, b: 0, c: 3, AUV: tex2{0, 0}, BUV: tex2{1, 1}, CUV: tex2{1, 0}, color: 0xFFFFFFFF},
 	}
-	currentMesh mesh
 )
+
+type MeshTextureData struct {
+	pixelData []uint32
+	width     int
+	height    int
+}
 
 // Each mesh has a collection of vertices and collection of faces and a vec3 rotation vector
 // We seperate vertices from faces, becasue multiple faces can share the same vertices...
 type mesh struct {
-	vertices    []vec3
-	faces       []face
-	rotation    vec3 // rotation is also called Euler angle
-	scale       vec3
-	translation vec3
+	vertices          []vec3
+	faces             []face
+	texture           MeshTextureData
+	rotation          vec3 // rotation is also called Euler angle
+	scale             vec3
+	translation       vec3
+	perFrameMutations []Opts
 }
 
 // mirrorHorizontally mirrors the mesh across the X axis in model space. Some
@@ -84,7 +91,9 @@ func newCubeMesh() mesh {
 	return newMesh(cubeMeshVertices[:], cubeMeshFaces[:], vec3{}, vec3{}, vec3{})
 }
 
-func newMeshFromFromFile(path string) (mesh, error) {
+type Opts func(*mesh) error
+
+func newMeshFromFromFile(path string, Options ...Opts) (mesh, error) {
 	var v []vec3
 	var fa []face
 	var vt []tex2
@@ -159,8 +168,8 @@ func newMeshFromFromFile(path string) (mesh, error) {
 				})
 			}
 		case "vt":
-			if len(fields[1:]) != 2 {
-				return mesh{}, fmt.Errorf("malformed texture vertex: got %d coordinates", len(fields))
+			if len(fields[1:]) > 3 {
+				return mesh{}, fmt.Errorf("malformed texture vertex: got %d coordinates", len(fields[1:]))
 			}
 			parsedU, err := strconv.ParseFloat(fields[1], 64)
 			if err != nil {
@@ -179,5 +188,12 @@ func newMeshFromFromFile(path string) (mesh, error) {
 	if err := scanner.Err(); err != nil {
 		return mesh{}, err
 	}
-	return newMesh(v, fa, vec3{}, vec3{}, vec3{}), nil
+
+	cMesh := newMesh(v, fa, vec3{}, vec3{}, vec3{})
+	for _, opt := range Options {
+		if err := opt(&cMesh); err != nil {
+			return mesh{}, err
+		}
+	}
+	return cMesh, nil
 }

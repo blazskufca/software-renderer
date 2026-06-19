@@ -30,6 +30,7 @@ var (
 	projectionMatrix   mat4  = mat4{}
 	globalLight        light = light{direction: vec3{0, 0, 1}}
 	deltaTime          float64
+	meshes             []*mesh
 )
 
 func setup(r *sdl.Renderer) error {
@@ -57,18 +58,54 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/Diffuse.jpg")
-	if err != nil {
-		return err
-	}
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOVY, aspectRatioY, zNear, zFar)
 	initFrustumPlanes(FOVX, FOVY, zNear, zFar)
-	currentMesh, err = newMeshFromFromFile("./assets/f18-superhornet.obj")
+	currentMesh, err := newMeshFromFromFile("./assets/f18-superhornet.obj", func(m *mesh) error {
+		tw, th, meshTexture, err := loadTextureData("./assets/Diffuse.jpg")
+		if err != nil {
+			return err
+		}
+		m.texture = MeshTextureData{
+			pixelData: meshTexture,
+			width:     tw,
+			height:    th,
+		}
+		return nil
+	}, func(m *mesh) error {
+		m.translation = vec3{10, 0, 0}
+		return nil
+	}, func(m *mesh) error {
+		m.mirrorHorizontally()
+		return nil
+	})
 	if err != nil {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
-	currentMesh.mirrorHorizontally()
+	meshes = append(meshes, &currentMesh)
+	currentMesh1, err := newMeshFromFromFile("./assets/f22.obj", func(m *mesh) error {
+		tw, th, meshTexture, err := loadTextureData("./assets/f22.png")
+		if err != nil {
+			return err
+		}
+		m.texture = MeshTextureData{
+			pixelData: meshTexture,
+			width:     tw,
+			height:    th,
+		}
+		m.scale = vec3{X: 1, Y: 1, Z: 1}
+		return nil
+	}, func(m *mesh) error {
+		m.rotation = vec3{0, math.Pi / 2, 0}
+		m.translation = vec3{X: -5}
+		m.scale = vec3{X: 5, Y: 5, Z: 5}
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to load obj: %w", err)
+	}
+	meshes = append(meshes, &currentMesh1)
 	//currentMesh = newCubeMesh()
 	return nil
 }
@@ -89,7 +126,7 @@ func render(r *sdl.Renderer) error {
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].u, triangle.textCoords[0].v,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].u, triangle.textCoords[1].v,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].u, triangle.textCoords[2].v,
-				triangle.flatShadePercent, meshTexture)
+				triangle.flatShadePercent, triangle.texture)
 		}
 
 		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE || renderMethod == RENDER_TEXTURED_WIRE {
@@ -137,132 +174,145 @@ func update() {
 	log.Printf("Last frame took %d ms", now-previousFrameTime)
 	deltaTime = float64(now-previousFrameTime) / 1000
 	previousFrameTime = now
-	//currentMesh.rotation.X += math.Pi / 2 * deltaTime
-	//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
-	//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
-	//currentMesh.rotation.Z += math.Pi / 2 * deltaTime
-	currentMesh.translation.Z = 5
-	//globalCamera.position.X += 2.0 * deltaTime
-	//globalCamera.position.Y += 2.0 * deltaTime
-
-	//currentMesh.scale.X += 0.002
-	//currentMesh.scale.Y += 0.001
-	//currentMesh.translation.X += 0.01
-
-	//globalCamera.position.X += 0.008 * deltaTime
-	//globalCamera.position.Y += 0.008
-	//currentMesh.translation.Y = -1.5
-	scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
-	translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
-	rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
-	// Create a view matrix
-	// Start the target as normalized Z axis
-	target := vec3{Z: 1}
-
-	cameraYaw := mat4MakeRotationY(globalCamera.yawAngle)
-	cameraPitch := mat4MakeRotationX(globalCamera.pitchAngle)
-	cameraRotation := cameraYaw.mulMat4(cameraPitch)
-	globalCamera.direction = vec3FromVec4(cameraRotation.mulVec4(vec4FromVec3(target)))
-
-	target = globalCamera.position.add(globalCamera.direction)
-
-	viewMatrix := mat4LookAt(globalCamera.position, target, vec3{0, 1, 0})
-
-	for i := 0; i < len(currentMesh.faces); i++ {
-		// Face index into the vertices array
-		//if i != 4 {
-		//	continue
-		//}
-		meshFace := currentMesh.faces[i]
-		facesVertices := [3]vec3{}
-
-		facesVertices[0] = currentMesh.vertices[meshFace.a]
-		facesVertices[1] = currentMesh.vertices[meshFace.b]
-		facesVertices[2] = currentMesh.vertices[meshFace.c]
-		// order matters
-		// Scale -> rotate -> translate
-
-		worldMatrix := mat4Identity()
-		worldMatrix = scaleMatrix.mulMat4(worldMatrix)
-		worldMatrix = rotationMatrixZ.mulMat4(worldMatrix)
-		worldMatrix = rotationMatrixY.mulMat4(worldMatrix)
-		worldMatrix = rotationMatrixX.mulMat4(worldMatrix)
-		worldMatrix = translationMatrix.mulMat4(worldMatrix)
-		worldMatrix = viewMatrix.mulMat4(worldMatrix)
-		var transformedVertexArr [3]vec4
-		for j := 0; j < 3; j++ {
-			transformedVertex := vec4FromVec3(facesVertices[j])
-			transformedVertex = worldMatrix.mulVec4(transformedVertex)
-			transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
+	for _, currentMesh := range meshes {
+		if currentMesh == nil {
+			panic("nil currentMesh")
 		}
-		vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
-		BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
-		// For vectors BA and CA we also only care about the direction and not the magnitude
-		BAVector.normalize()
-		CAVector.normalize()
-
-		// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
-		// Face normal vector can be normalized
-		faceNormal := BAVector.cross(CAVector)
-		faceNormal.normalize()
-
-		if cullMethod == CULL_BACKFACE {
-			// Backface culling
-			origin := vec3{} // Camera position can change so we need a real 0, 0, 0
-			cameraRayVec := origin.sub(vectorA)
-
-			cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
-
-			// If dot product is less than 0 we should hide the face
-			if cameraRayFaceNormalDot < 0 {
-				continue
+		for _, mutation := range currentMesh.perFrameMutations {
+			err := mutation(currentMesh)
+			if err != nil {
+				panic(err)
 			}
 		}
+		//currentMesh.rotation.X += math.Pi / 2 * deltaTime
+		//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
+		//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
+		//currentMesh.rotation.Z += math.Pi / 2 * deltaTime
+		//currentMesh.translation.Z = 5
+		//globalCamera.position.X += 2.0 * deltaTime
+		//globalCamera.position.Y += 2.0 * deltaTime
 
-		// Clipping stage
-		poly := newPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
-		poly.clipPolygon()
-		// Break the clipped polygon apart into triangles (fan triangulation)
-		var clippedTriangles [maximumNumberOfPolygonTriangles]triangle
-		var numberOfClippedTriangles int = poly.numberOfVertices - 2
-		for t := 0; t < numberOfClippedTriangles; t++ {
-			tr := triangle{}
-			tr.points = [3]vec4{vec4FromVec3(poly.vertices[0]), vec4FromVec3(poly.vertices[t+1]), vec4FromVec3(poly.vertices[t+2])}
-			tr.textCoords = [3]tex2{poly.texCoords[0], poly.texCoords[t+1], poly.texCoords[t+2]}
-			clippedTriangles[t] = tr
-		}
-		for i := 0; i < numberOfClippedTriangles; i++ {
-			clippedTriangle := clippedTriangles[i]
+		//currentMesh.scale.X += 0.002
+		//currentMesh.scale.Y += 0.001
+		//currentMesh.translation.X += 0.01
 
-			var projectedPoints [3]vec4
-			for j := 0; j < len(transformedVertexArr); j++ {
-				projectedPoints[j] = projectionMatrix.mat4MulVec4Project(clippedTriangle.points[j])
+		//globalCamera.position.X += 0.008 * deltaTime
+		//globalCamera.position.Y += 0.008
+		//currentMesh.translation.Y = -1.5
+		scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
+		translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
+		rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
+		// Create a view matrix
+		// Start the target as normalized Z axis
+		target := vec3{Z: 1}
 
-				// Scale into the view
-				projectedPoints[j].X *= float64(windowWidth / 2)
-				projectedPoints[j].Y *= float64(windowHeight / 2)
+		cameraYaw := mat4MakeRotationY(globalCamera.yawAngle)
+		cameraPitch := mat4MakeRotationX(globalCamera.pitchAngle)
+		cameraRotation := cameraYaw.mulMat4(cameraPitch)
+		globalCamera.direction = vec3FromVec4(cameraRotation.mulVec4(vec4FromVec3(target)))
 
-				// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
-				projectedPoints[j].Y *= -1
-				// Translate the projected point into the middle of the screen
-				projectedPoints[j].X += float64(windowWidth / 2)
-				projectedPoints[j].Y += float64(windowHeight / 2)
+		target = globalCamera.position.add(globalCamera.direction)
+
+		viewMatrix := mat4LookAt(globalCamera.position, target, vec3{0, 1, 0})
+
+		for i := 0; i < len(currentMesh.faces); i++ {
+			// Face index into the vertices array
+			//if i != 4 {
+			//	continue
+			//}
+			meshFace := currentMesh.faces[i]
+			facesVertices := [3]vec3{}
+
+			facesVertices[0] = currentMesh.vertices[meshFace.a]
+			facesVertices[1] = currentMesh.vertices[meshFace.b]
+			facesVertices[2] = currentMesh.vertices[meshFace.c]
+			// order matters
+			// Scale -> rotate -> translate
+
+			worldMatrix := mat4Identity()
+			worldMatrix = scaleMatrix.mulMat4(worldMatrix)
+			worldMatrix = rotationMatrixZ.mulMat4(worldMatrix)
+			worldMatrix = rotationMatrixY.mulMat4(worldMatrix)
+			worldMatrix = rotationMatrixX.mulMat4(worldMatrix)
+			worldMatrix = translationMatrix.mulMat4(worldMatrix)
+			worldMatrix = viewMatrix.mulMat4(worldMatrix)
+			var transformedVertexArr [3]vec4
+			for j := 0; j < 3; j++ {
+				transformedVertex := vec4FromVec3(facesVertices[j])
+				transformedVertex = worldMatrix.mulVec4(transformedVertex)
+				transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
 			}
-			var projectedTriangle triangle
-			// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
-			flatShadePercent := -faceNormal.dot(globalLight.direction)
-			projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
-			projectedTriangle.flatShadePercent = flatShadePercent
-			projectedTriangle.points[0] = projectedPoints[0]
-			projectedTriangle.points[1] = projectedPoints[1]
-			projectedTriangle.points[2] = projectedPoints[2]
-			projectedTriangle.textCoords[0] = clippedTriangle.textCoords[0]
-			projectedTriangle.textCoords[1] = clippedTriangle.textCoords[1]
-			projectedTriangle.textCoords[2] = clippedTriangle.textCoords[2]
-			projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
-			trianglesToRender = append(trianglesToRender, projectedTriangle)
+			vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
+			BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
+			// For vectors BA and CA we also only care about the direction and not the magnitude
+			BAVector.normalize()
+			CAVector.normalize()
+
+			// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
+			// Face normal vector can be normalized
+			faceNormal := BAVector.cross(CAVector)
+			faceNormal.normalize()
+
+			if cullMethod == CULL_BACKFACE {
+				// Backface culling
+				origin := vec3{} // Camera position can change so we need a real 0, 0, 0
+				cameraRayVec := origin.sub(vectorA)
+
+				cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
+
+				// If dot product is less than 0 we should hide the face
+				if cameraRayFaceNormalDot < 0 {
+					continue
+				}
+			}
+
+			// Clipping stage
+			poly := newPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
+			poly.clipPolygon()
+			// Break the clipped polygon apart into triangles (fan triangulation)
+			var clippedTriangles [maximumNumberOfPolygonTriangles]triangle
+			var numberOfClippedTriangles int = poly.numberOfVertices - 2
+			for t := 0; t < numberOfClippedTriangles; t++ {
+				tr := triangle{}
+				tr.points = [3]vec4{vec4FromVec3(poly.vertices[0]), vec4FromVec3(poly.vertices[t+1]), vec4FromVec3(poly.vertices[t+2])}
+				tr.textCoords = [3]tex2{poly.texCoords[0], poly.texCoords[t+1], poly.texCoords[t+2]}
+				clippedTriangles[t] = tr
+			}
+			for i := 0; i < numberOfClippedTriangles; i++ {
+				clippedTriangle := clippedTriangles[i]
+
+				var projectedPoints [3]vec4
+				for j := 0; j < len(transformedVertexArr); j++ {
+					projectedPoints[j] = projectionMatrix.mat4MulVec4Project(clippedTriangle.points[j])
+
+					// Scale into the view
+					projectedPoints[j].X *= float64(windowWidth / 2)
+					projectedPoints[j].Y *= float64(windowHeight / 2)
+
+					// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
+					projectedPoints[j].Y *= -1
+					// Translate the projected point into the middle of the screen
+					projectedPoints[j].X += float64(windowWidth / 2)
+					projectedPoints[j].Y += float64(windowHeight / 2)
+				}
+				var projectedTriangle triangle
+				// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
+				flatShadePercent := -faceNormal.dot(globalLight.direction)
+				projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
+				projectedTriangle.flatShadePercent = flatShadePercent
+				projectedTriangle.points[0] = projectedPoints[0]
+				projectedTriangle.points[1] = projectedPoints[1]
+				projectedTriangle.points[2] = projectedPoints[2]
+				projectedTriangle.textCoords[0] = clippedTriangle.textCoords[0]
+				projectedTriangle.textCoords[1] = clippedTriangle.textCoords[1]
+				projectedTriangle.textCoords[2] = clippedTriangle.textCoords[2]
+				projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
+				projectedTriangle.texture = &currentMesh.texture
+				trianglesToRender = append(trianglesToRender, projectedTriangle)
+			}
 		}
 	}
+
 }
 
 func processInput(running *bool) {

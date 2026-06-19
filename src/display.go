@@ -36,6 +36,8 @@ func initializeWindow() (*sdl.Window, *sdl.Renderer, error) {
 	}
 	windowHeight = 720
 	windowWidth = 1280
+	//windowHeight = int(dm.H)
+	//windowWidth = int(dm.W)
 	window, err := sdl.CreateWindow("3D renderer", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(dm.W), int32(dm.H), sdl.WINDOW_BORDERLESS)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize SDL2 window with error: %w", err)
