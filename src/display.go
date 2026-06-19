@@ -34,9 +34,9 @@ func initializeWindow() (*sdl.Window, *sdl.Renderer, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get the current display mode: %w", err)
 	}
-	windowHeight = int(dm.H)
-	windowWidth = int(dm.W)
-	window, err := sdl.CreateWindow("3D renderer", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(windowWidth), int32(windowHeight), sdl.WINDOW_BORDERLESS)
+	windowHeight = 720
+	windowWidth = 1280
+	window, err := sdl.CreateWindow("3D renderer", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(dm.W), int32(dm.H), sdl.WINDOW_BORDERLESS)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to initialize SDL2 window with error: %w", err)
 	}

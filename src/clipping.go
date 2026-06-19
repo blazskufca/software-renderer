@@ -2,6 +2,8 @@ package main
 
 import (
 	"math"
+
+	"github.com/blazskufca/software-renderer/internal/utils"
 )
 
 const (
@@ -134,15 +136,15 @@ func (p *polygon) clipPolygonAgainstPlane(plane int) {
 			//intersectionPoint = intersectionPoint.multiply(factorT)   // t(Q1- Q2)
 			//intersectionPoint = intersectionPoint.add(previousVertex) // Q1 + t(Q1 - Q2)
 			intersectionPoint := vec3{
-				X: lerp[float64, float64](previousVertex.X, p.vertices[i].X, factorT),
-				Y: lerp[float64, float64](previousVertex.Y, p.vertices[i].Y, factorT),
-				Z: lerp[float64, float64](previousVertex.Z, p.vertices[i].Z, factorT),
+				X: utils.Lerp[float64, float64](previousVertex.X, p.vertices[i].X, factorT),
+				Y: utils.Lerp[float64, float64](previousVertex.Y, p.vertices[i].Y, factorT),
+				Z: utils.Lerp[float64, float64](previousVertex.Z, p.vertices[i].Z, factorT),
 			}
 
 			// We also do the linear interpolation on UV texure coordinates
 			interpolatedTextCord := tex2{
-				u: lerp[float64, float64](previousTextureCoord.u, currentTextCord.u, factorT),
-				v: lerp[float64, float64](previousTextureCoord.v, currentTextCord.v, factorT),
+				u: utils.Lerp[float64, float64](previousTextureCoord.u, currentTextCord.u, factorT),
+				v: utils.Lerp[float64, float64](previousTextureCoord.v, currentTextCord.v, factorT),
 			}
 			insideVertices[numInsideVertices] = intersectionPoint
 			insideTextureCoordinates[numInsideVertices] = interpolatedTextCord
@@ -163,9 +165,4 @@ func (p *polygon) clipPolygonAgainstPlane(plane int) {
 	p.vertices = insideVertices
 	p.numberOfVertices = numInsideVertices
 	p.texCoords = insideTextureCoordinates
-}
-
-// lerp calculates linear interpolation between U and V with factor T according to formula I = u + factor(v-u)
-func lerp[T, U ~int | ~float64 | ~float32](u, v, factor T) U {
-	return U(u + factor*(v-u))
 }

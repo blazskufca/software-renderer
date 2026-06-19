@@ -57,7 +57,7 @@ func setup(r *sdl.Renderer) error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	err = loadPngTextureData("./assets/Diffuse.jpg")
+	err = loadPngTextureData("./assets/f22.png")
 	if err != nil {
 		return err
 	}
@@ -137,7 +137,7 @@ func update() {
 	deltaTime = float64(now-previousFrameTime) / 1000
 	previousFrameTime = now
 	//currentMesh.rotation.X += math.Pi / 2 * deltaTime
-	currentMesh.rotation.Y += math.Pi / 2 * deltaTime
+	//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
 	//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
 	//currentMesh.rotation.Z += math.Pi / 2 * deltaTime
 	currentMesh.translation.Z = 5
@@ -159,7 +159,9 @@ func update() {
 	target := vec3{Z: 1}
 
 	cameraYaw := mat4MakeRotationY(globalCamera.yawAngle)
-	globalCamera.direction = vec3FromVec4(cameraYaw.mulVec4(vec4FromVec3(target)))
+	cameraPitch := mat4MakeRotationX(globalCamera.pitchAngle)
+	cameraRotation := cameraYaw.mulMat4(cameraPitch)
+	globalCamera.direction = vec3FromVec4(cameraRotation.mulVec4(vec4FromVec3(target)))
 
 	target = globalCamera.position.add(globalCamera.direction)
 
@@ -268,6 +270,18 @@ func processInput(running *bool) {
 		case *sdl.QuitEvent:
 			*running = false
 			break
+		case *sdl.MouseMotionEvent:
+			yaw := float64(t.XRel)
+			pitch := float64(t.YRel)
+			sensitivity := 0.005
+			globalCamera.yawAngle += yaw * sensitivity
+			globalCamera.pitchAngle -= pitch * sensitivity
+			if globalCamera.pitchAngle > 1.55 {
+				globalCamera.pitchAngle = 1.55
+			}
+			if globalCamera.pitchAngle < -1.55 {
+				globalCamera.pitchAngle = -1.55
+			}
 		case *sdl.KeyboardEvent:
 			// Check if it's a keydown event and specifically the ESCAPE key
 			if t.Type == sdl.KEYDOWN {
@@ -295,9 +309,15 @@ func processInput(running *bool) {
 				case sdl.K_DOWN:
 					globalCamera.position.Y -= 3 * deltaTime
 				case sdl.K_a:
-					globalCamera.yawAngle += 0.7 * deltaTime
+					right := vec3{Y: 1}.cross(globalCamera.direction) // right = up × forward (left-handed)
+					right.normalize()
+					globalCamera.rightVelocity = right.multiply(5 * deltaTime)
+					globalCamera.position = globalCamera.position.sub(globalCamera.rightVelocity)
 				case sdl.K_d:
-					globalCamera.yawAngle -= 0.7 * deltaTime
+					right := vec3{Y: 1}.cross(globalCamera.direction)
+					right.normalize()
+					globalCamera.rightVelocity = right.multiply(5 * deltaTime)
+					globalCamera.position = globalCamera.position.add(globalCamera.rightVelocity)
 				case sdl.K_w:
 					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
 					globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)
@@ -318,6 +338,7 @@ func main() {
 	}
 	defer window.Destroy()
 	defer r.Destroy()
+	sdl.SetRelativeMouseMode(true)
 	err = setup(r)
 	if err != nil {
 		log.Fatal(err)
