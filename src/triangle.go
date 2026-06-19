@@ -22,16 +22,11 @@ type triangle struct {
 	flatShadePercent float64
 }
 
-func intSwap(a, b *int) {
-	tmp := *a
-	*a = *b
-	*b = tmp
-}
-
-func floatSwap(a, b *float64) {
-	tmp := *a
-	*a = *b
-	*b = tmp
+func swapNumeric[T interface{ ~int | ~float32 | ~float64 }](a, b *T) {
+	if a == nil || b == nil {
+		return
+	}
+	*a, *b = *b, *a
 }
 
 //	func drawFilledTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
@@ -96,22 +91,22 @@ func drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 flo
 	x2, y2 := int(x2f), int(y2f)
 
 	if y0 > y1 {
-		intSwap(&x0, &x1)
-		intSwap(&y0, &y1)
-		floatSwap(&z0, &z1)
-		floatSwap(&w0, &w1)
+		swapNumeric(&x0, &x1)
+		swapNumeric(&y0, &y1)
+		swapNumeric(&z0, &z1)
+		swapNumeric(&w0, &w1)
 	}
 	if y1 > y2 {
-		intSwap(&x1, &x2)
-		intSwap(&y1, &y2)
-		floatSwap(&z1, &z2)
-		floatSwap(&w1, &w2)
+		swapNumeric(&x1, &x2)
+		swapNumeric(&y1, &y2)
+		swapNumeric(&z1, &z2)
+		swapNumeric(&w1, &w2)
 	}
 	if y0 > y1 {
-		intSwap(&x0, &x1)
-		intSwap(&y0, &y1)
-		floatSwap(&z0, &z1)
-		floatSwap(&w0, &w1)
+		swapNumeric(&x0, &x1)
+		swapNumeric(&y0, &y1)
+		swapNumeric(&z0, &z1)
+		swapNumeric(&w0, &w1)
 	}
 
 	pointA := vec4{float64(x0), float64(y0), z0, w0}
@@ -131,7 +126,7 @@ func drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 flo
 			xStart := int(float64(x1) + float64(y-y1)*invSlope1) // single truncation, no Round
 			xEnd := int(float64(x0) + float64(y-y0)*invSlope2)
 			if xEnd < xStart {
-				intSwap(&xStart, &xEnd)
+				swapNumeric(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
 				drawTrianglePixel(x, y, color, pointA, pointB, pointC)
@@ -151,7 +146,7 @@ func drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 flo
 			xStart := int(float64(x1) + float64(y-y1)*invSlope1)
 			xEnd := int(float64(x0) + float64(y-y0)*invSlope2)
 			if xEnd < xStart {
-				intSwap(&xStart, &xEnd)
+				swapNumeric(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
 				drawTrianglePixel(x, y, color, pointA, pointB, pointC)
@@ -190,29 +185,29 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 	// Triangles vertices need to be sorted by the Y component here too
 	// But when we swap not only do we need X and Y, we also have to swap the UV coordinates
 	if iy0 > iy1 {
-		intSwap(&iy0, &iy1)
-		intSwap(&ix0, &ix1)
-		floatSwap(&u0, &u1)
-		floatSwap(&v0, &v1)
-		floatSwap(&z0, &z1)
-		floatSwap(&w0, &w1)
+		swapNumeric(&iy0, &iy1)
+		swapNumeric(&ix0, &ix1)
+		swapNumeric(&u0, &u1)
+		swapNumeric(&v0, &v1)
+		swapNumeric(&z0, &z1)
+		swapNumeric(&w0, &w1)
 
 	}
 	if iy1 > iy2 {
-		intSwap(&iy1, &iy2)
-		intSwap(&ix1, &ix2)
-		floatSwap(&u1, &u2)
-		floatSwap(&v1, &v2)
-		floatSwap(&z1, &z2)
-		floatSwap(&w1, &w2)
+		swapNumeric(&iy1, &iy2)
+		swapNumeric(&ix1, &ix2)
+		swapNumeric(&u1, &u2)
+		swapNumeric(&v1, &v2)
+		swapNumeric(&z1, &z2)
+		swapNumeric(&w1, &w2)
 	}
 	if iy0 > iy1 {
-		intSwap(&iy0, &iy1)
-		intSwap(&ix0, &ix1)
-		floatSwap(&u0, &u1)
-		floatSwap(&v0, &v1)
-		floatSwap(&z0, &z1)
-		floatSwap(&w0, &w1)
+		swapNumeric(&iy0, &iy1)
+		swapNumeric(&ix0, &ix1)
+		swapNumeric(&u0, &u1)
+		swapNumeric(&v0, &v1)
+		swapNumeric(&z0, &z1)
+		swapNumeric(&w0, &w1)
 
 	}
 
@@ -249,7 +244,7 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 			xStart := int(float64(ix1) + float64(y-iy1)*inverseSlope1)
 			xEnd := int(float64(ix0) + float64(y-iy0)*inverseSlope2)
 			if xEnd < xStart {
-				intSwap(&xStart, &xEnd)
+				swapNumeric(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
 				drawTexel(x, y, texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
@@ -272,7 +267,7 @@ func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2
 			xStart := int(float64(ix1) + float64(y-iy1)*inverseSlope1)
 			xEnd := int(float64(ix0) + float64(y-iy0)*inverseSlope2)
 			if xEnd < xStart {
-				intSwap(&xStart, &xEnd)
+				swapNumeric(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
 				drawTexel(x, y, texture, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
