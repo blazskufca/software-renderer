@@ -1,4 +1,4 @@
-module 3D_graphics_programming_from_scratch
+module github.com/blazskufca/software-renderer
 
 go 1.26
 
