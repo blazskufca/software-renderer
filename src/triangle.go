@@ -183,9 +183,6 @@ func drawTrianglePixel(x, y int, color uint32, a, b, c vec4) {
 }
 
 func drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, flatShadePercent float64, texture []uint32) {
-	if x0 < 0 || x0 >= float64(windowWidth) || y0 < 0 || y0 >= float64(windowHeight) {
-		return
-	}
 	ix0, iy0 := int(x0), int(y0)
 	ix1, iy1 := int(x1), int(y1)
 	ix2, iy2 := int(x2), int(y2)
