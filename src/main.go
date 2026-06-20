@@ -4,43 +4,47 @@ import (
 	"fmt"
 	"log"
 	"math"
+	"runtime"
+	"time"
 
-	"github.com/veandco/go-sdl2/sdl"
+	"github.com/hajimehoshi/ebiten/v2"
+	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
+	"github.com/hajimehoshi/ebiten/v2/inpututil"
 )
 
 // TODO: Move global state into a central structure
 // TODO: Add attribution for models (i.e 3D assets provided by Kenney.nl (CC0 License).)
 
 const (
-	FPS                      = 60
-	frameTargetTime   uint64 = 1000 / FPS
-	cubeNMeshVertices        = 8
+	cubeNMeshVertices = 8
 )
 
 var (
-	windowWidth        = 800
-	windowHeight       = 600
-	colorBuffer        []uint32
-	zBuffer            []float64
-	colorBufferTexture *sdl.Texture
-	previousFrameTime  uint64 = 0
-	trianglesToRender  []triangle
-	renderMethod             = RENDER_WIRE
-	cullMethod               = CULL_BACKFACE
-	projectionMatrix   mat4  = mat4{}
-	globalLight        light = light{direction: vec3{0, 0, 1}}
-	deltaTime          float64
-	meshes             []*mesh
+	windowWidth       = 2160
+	windowHeight      = 4069
+	colorBuffer       []byte
+	zBuffer           []float64
+	previousFrameTime time.Time
+	wasCaptured       bool
+	prevMouseX        int
+	prevMouseY        int
+	trianglesToRender []triangle
+	polygonsRendered  int   // clipped polygons that survived culling this frame
+	renderMethod            = RENDER_WIRE
+	cullMethod              = CULL_BACKFACE
+	projectionMatrix  mat4  = mat4{}
+	globalLight       light = light{direction: vec3{0, 0, 1}}
+	deltaTime         float64
+	meshes            []*mesh
 )
 
-func setup(r *sdl.Renderer) error {
-	var err error
-	colorBuffer = make([]uint32, windowWidth*windowHeight)
+// Game implements ebiten.Game, driving the software renderer through ebiten's
+// Update/Draw loop.
+type Game struct{}
+
+func setup() error {
+	colorBuffer = make([]byte, windowWidth*windowHeight*4)
 	zBuffer = make([]float64, windowWidth*windowHeight)
-	colorBufferTexture, err = r.CreateTexture(uint32(sdl.PIXELFORMAT_RGBA32), sdl.TEXTUREACCESS_STREAMING, int32(windowWidth), int32(windowHeight))
-	if err != nil {
-		return fmt.Errorf("failed to initialize SDL2 texture with error: %w", err)
-	}
 
 	FOVY := math.Pi / 3 // FOV needs to be in radians -> math.pi/3 = 60deg
 	aspectRatioY := float64(windowHeight) / float64(windowWidth)
@@ -61,8 +65,8 @@ func setup(r *sdl.Renderer) error {
 	// Initialize the perspective projection matrix
 	projectionMatrix = mat4MakePerspective(FOVY, aspectRatioY, zNear, zFar)
 	initFrustumPlanes(FOVX, FOVY, zNear, zFar)
-	currentMesh, err := newMeshFromFromFile("./assets/f18-superhornet.obj", func(m *mesh) error {
-		tw, th, meshTexture, err := loadTextureData("./assets/Diffuse.jpg")
+	currentMesh, err := newMeshFromFromFile("assets/f18-superhornet.obj", func(m *mesh) error {
+		tw, th, meshTexture, err := loadTextureData("assets/Diffuse.jpg")
 		if err != nil {
 			return err
 		}
@@ -83,8 +87,8 @@ func setup(r *sdl.Renderer) error {
 		return fmt.Errorf("failed to load obj: %w", err)
 	}
 	meshes = append(meshes, &currentMesh)
-	currentMesh1, err := newMeshFromFromFile("./assets/f22.obj", func(m *mesh) error {
-		tw, th, meshTexture, err := loadTextureData("./assets/f22.png")
+	currentMesh1, err := newMeshFromFromFile("assets/f22.obj", func(m *mesh) error {
+		tw, th, meshTexture, err := loadTextureData("assets/f22.png")
 		if err != nil {
 			return err
 		}
@@ -110,7 +114,7 @@ func setup(r *sdl.Renderer) error {
 	return nil
 }
 
-func render(r *sdl.Renderer) error {
+func (g *Game) Draw(screen *ebiten.Image) {
 	for i := 0; i < len(trianglesToRender); i++ {
 		triangle := trianglesToRender[i]
 		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
@@ -141,17 +145,21 @@ func render(r *sdl.Renderer) error {
 		}
 
 	}
-	err := renderColorBuffer(r)
-	if err != nil {
-		return err
-	}
+	renderColorBuffer(screen)
+	// Overlay the FPS counter on top of the rendered frame
+	ebitenutil.DebugPrint(screen, fmt.Sprintf(
+		"FPS: %.1f, TPS: %.1f\nPolygons: %d  Triangles: %d",
+		ebiten.ActualFPS(), ebiten.ActualTPS(), polygonsRendered, len(trianglesToRender)))
 	// Clear color buffer
 	clearColorBuffer(0xFF000000)
 	// Clear Z-buffer
 	clearZBuffer(1)
-	r.Present()
+}
 
-	return nil
+// Layout reports the renderer's internal resolution; ebiten scales this to the
+// actual (fullscreen) window.
+func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return windowWidth, windowHeight
 }
 
 // project applies perspective projection to vec3 point
@@ -163,16 +171,16 @@ func render(r *sdl.Renderer) error {
 //}
 
 func update() {
-	timeToWait := frameTargetTime - (sdl.GetTicks64() - previousFrameTime)
-
-	if timeToWait > 0 && timeToWait <= frameTargetTime {
-		sdl.Delay(uint32(timeToWait))
-	}
+	// ebiten drives the frame pacing (fixed TPS), so we no longer sleep here;
+	// deltaTime is measured from wall-clock time between updates.
 	trianglesToRender = trianglesToRender[:0]
+	polygonsRendered = 0
 
-	now := sdl.GetTicks64()
-	log.Printf("Last frame took %d ms", now-previousFrameTime)
-	deltaTime = float64(now-previousFrameTime) / 1000
+	now := time.Now()
+	if previousFrameTime.IsZero() {
+		previousFrameTime = now
+	}
+	deltaTime = now.Sub(previousFrameTime).Seconds()
 	previousFrameTime = now
 	for _, currentMesh := range meshes {
 		if currentMesh == nil {
@@ -272,6 +280,9 @@ func update() {
 			// Break the clipped polygon apart into triangles (fan triangulation)
 			var clippedTriangles [maximumNumberOfPolygonTriangles]triangle
 			var numberOfClippedTriangles int = poly.numberOfVertices - 2
+			if numberOfClippedTriangles > 0 {
+				polygonsRendered++
+			}
 			for t := 0; t < numberOfClippedTriangles; t++ {
 				tr := triangle{}
 				tr.points = [3]vec4{vec4FromVec3(poly.vertices[0]), vec4FromVec3(poly.vertices[t+1]), vec4FromVec3(poly.vertices[t+2])}
@@ -315,93 +326,118 @@ func update() {
 
 }
 
-func processInput(running *bool) {
-	for event := sdl.PollEvent(); event != nil; event = sdl.PollEvent() {
-		switch t := event.(type) {
-		case *sdl.QuitEvent:
-			*running = false
-			break
-		case *sdl.MouseMotionEvent:
-			yaw := float64(t.XRel)
-			pitch := float64(t.YRel)
-			sensitivity := 0.005
-			globalCamera.yawAngle += yaw * sensitivity
-			globalCamera.pitchAngle -= pitch * sensitivity
-			if globalCamera.pitchAngle > 1.55 {
-				globalCamera.pitchAngle = 1.55
-			}
-			if globalCamera.pitchAngle < -1.55 {
-				globalCamera.pitchAngle = -1.55
-			}
-		case *sdl.KeyboardEvent:
-			// Check if it's a keydown event and specifically the ESCAPE key
-			if t.Type == sdl.KEYDOWN {
-				switch t.Keysym.Sym {
-				case sdl.K_ESCAPE:
-					*running = false
-				case sdl.K_1:
-					renderMethod = RENDER_WIRE_VERTEX
-				case sdl.K_2:
-					renderMethod = RENDER_WIRE
-				case sdl.K_3:
-					renderMethod = RENDER_FILL_TRIANGLE
-				case sdl.K_4:
-					renderMethod = RENDER_FILL_TRIANGLE_WIRE
-				case sdl.K_5:
-					renderMethod = RENDER_TEXTURED
-				case sdl.K_6:
-					renderMethod = RENDER_TEXTURED_WIRE
-				case sdl.K_c:
-					cullMethod = CULL_BACKFACE
-				case sdl.K_x:
-					cullMethod = CULL_NONE
-				case sdl.K_UP:
-					globalCamera.position.Y += 3 * deltaTime
-				case sdl.K_DOWN:
-					globalCamera.position.Y -= 3 * deltaTime
-				case sdl.K_a:
-					right := vec3{Y: 1}.cross(globalCamera.direction) // right = up × forward (left-handed)
-					right.normalize()
-					globalCamera.rightVelocity = right.multiply(5 * deltaTime)
-					globalCamera.position = globalCamera.position.sub(globalCamera.rightVelocity)
-				case sdl.K_d:
-					right := vec3{Y: 1}.cross(globalCamera.direction)
-					right.normalize()
-					globalCamera.rightVelocity = right.multiply(5 * deltaTime)
-					globalCamera.position = globalCamera.position.add(globalCamera.rightVelocity)
-				case sdl.K_w:
-					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
-					globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)
-				case sdl.K_s:
-					globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
-					globalCamera.position = globalCamera.position.sub(globalCamera.forwardVelocity)
-				}
-			}
-		}
+// processInput handles per-frame keyboard and mouse input. It returns true when
+// the user has requested to quit.
+func processInput() (quit bool) {
+	// Capture the cursor for FPS mouse-look. On web, pointer lock is gated behind
+	// a user gesture and the browser releases it when Esc is pressed, so we
+	// (re)capture on a left click whenever the cursor isn't currently captured.
+	if ebiten.CursorMode() != ebiten.CursorModeCaptured &&
+		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
 	}
+
+	// On desktop, Esc quits. On web, Esc is the browser's "release pointer lock"
+	// gesture, so we leave the demo running and let a click re-capture the cursor.
+	if runtime.GOOS != "js" && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		return true
+	}
+
+	// Render / cull mode toggles (one-shot on key press)
+	if inpututil.IsKeyJustPressed(ebiten.Key1) {
+		renderMethod = RENDER_WIRE_VERTEX
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key2) {
+		renderMethod = RENDER_WIRE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key3) {
+		renderMethod = RENDER_FILL_TRIANGLE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key4) {
+		renderMethod = RENDER_FILL_TRIANGLE_WIRE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key5) {
+		renderMethod = RENDER_TEXTURED
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key6) {
+		renderMethod = RENDER_TEXTURED_WIRE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
+		cullMethod = CULL_BACKFACE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
+		cullMethod = CULL_NONE
+	}
+
+	// Camera movement (continuous while held)
+	if ebiten.IsKeyPressed(ebiten.KeyUp) {
+		globalCamera.position.Y += 3 * deltaTime
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyDown) {
+		globalCamera.position.Y -= 3 * deltaTime
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyA) {
+		right := vec3{Y: 1}.cross(globalCamera.direction) // right = up × forward (left-handed)
+		right.normalize()
+		globalCamera.rightVelocity = right.multiply(5 * deltaTime)
+		globalCamera.position = globalCamera.position.sub(globalCamera.rightVelocity)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		right := vec3{Y: 1}.cross(globalCamera.direction)
+		right.normalize()
+		globalCamera.rightVelocity = right.multiply(5 * deltaTime)
+		globalCamera.position = globalCamera.position.add(globalCamera.rightVelocity)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyW) {
+		globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
+		globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyS) {
+		globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
+		globalCamera.position = globalCamera.position.sub(globalCamera.forwardVelocity)
+	}
+
+	// Relative mouse look (only while captured, so the reported position
+	// accumulates motion). While not captured — and on the first captured frame
+	// after a transition — we just resync the baseline to the current position so
+	// (re)capturing never produces a large delta spike.
+	mouseX, mouseY := ebiten.CursorPosition()
+	captured := ebiten.CursorMode() == ebiten.CursorModeCaptured
+	if !captured || !wasCaptured {
+		prevMouseX, prevMouseY = mouseX, mouseY
+		wasCaptured = captured
+		return false
+	}
+	yaw := float64(mouseX - prevMouseX)
+	pitch := float64(mouseY - prevMouseY)
+	prevMouseX, prevMouseY = mouseX, mouseY
+	sensitivity := 0.005
+	globalCamera.yawAngle += yaw * sensitivity
+	globalCamera.pitchAngle -= pitch * sensitivity
+	if globalCamera.pitchAngle > 1.55 {
+		globalCamera.pitchAngle = 1.55
+	}
+	if globalCamera.pitchAngle < -1.55 {
+		globalCamera.pitchAngle = -1.55
+	}
+	return false
+}
+
+// Update advances simulation state once per tick.
+func (g *Game) Update() error {
+	if processInput() {
+		return ebiten.Termination
+	}
+	update()
+	return nil
 }
 
 func main() {
-	defer sdl.Quit()
-	window, r, err := initializeWindow()
-	if err != nil {
+	initializeWindow()
+	if err := setup(); err != nil {
 		log.Fatal(err)
 	}
-	defer window.Destroy()
-	defer r.Destroy()
-	sdl.SetRelativeMouseMode(true)
-	err = setup(r)
-	if err != nil {
+	if err := ebiten.RunGame(&Game{}); err != nil {
 		log.Fatal(err)
-	}
-	running := true
-	for running {
-		processInput(&running)
-		update()
-		err := render(r)
-		if err != nil {
-			log.Fatal(err)
-		}
-
 	}
 }

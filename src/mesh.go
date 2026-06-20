@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"fmt"
 	"log"
-	"os"
 	"strconv"
 	"strings"
 )
@@ -98,7 +97,7 @@ func newMeshFromFromFile(path string, Options ...Opts) (mesh, error) {
 	var fa []face
 	var vt []tex2
 
-	f, err := os.Open(path)
+	f, err := openAsset(path)
 	if err != nil {
 		return mesh{}, err
 	}

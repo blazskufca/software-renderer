@@ -6,7 +6,6 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"math"
-	"os"
 )
 
 var (
@@ -133,7 +132,7 @@ func drawTexel(x, y int, texture *MeshTextureData, a, b, c vec4, AUV, BUV, CUV t
 }
 
 func loadTextureData(path string) (width int, height int, pixels []uint32, err error) {
-	file, err := os.Open(path)
+	file, err := openAsset(path)
 	if err != nil {
 		return 0, 0, nil, err
 	}

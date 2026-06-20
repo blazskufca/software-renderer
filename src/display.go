@@ -1,11 +1,11 @@
 package main
 
 import (
-	"fmt"
+	"encoding/binary"
 	"math"
-	"unsafe"
+	"runtime"
 
-	"github.com/veandco/go-sdl2/sdl"
+	"github.com/hajimehoshi/ebiten/v2"
 )
 
 type cullMode int
@@ -26,47 +26,28 @@ const (
 	RENDER_TEXTURED_WIRE
 )
 
-func initializeWindow() (*sdl.Window, *sdl.Renderer, error) {
-	if err := sdl.Init(sdl.INIT_EVERYTHING); err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 with error: %w", err)
-	}
-	dm, err := sdl.GetCurrentDisplayMode(0)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get the current display mode: %w", err)
-	}
+// initializeWindow configures the ebiten window and its render resolution.
+func initializeWindow() {
 	windowHeight = 720
 	windowWidth = 1280
-	//windowHeight = int(dm.H)
-	//windowWidth = int(dm.W)
-	window, err := sdl.CreateWindow("3D renderer", sdl.WINDOWPOS_CENTERED, sdl.WINDOWPOS_CENTERED, int32(dm.W), int32(dm.H), sdl.WINDOW_BORDERLESS)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 window with error: %w", err)
-	}
-	if window == nil {
-		return nil, nil, fmt.Errorf("failed to initialize SDL2 window")
-	}
+	ebiten.SetWindowTitle("3D renderer")
+	ebiten.SetWindowSize(windowWidth, windowHeight)
+	ebiten.SetFullscreen(true)
 
-	// Index -1 tells SDL2 to get a default screen device
-	// Flags 0 means no flags
-	r, err := sdl.CreateRenderer(window, -1, 0)
-	if err != nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 render with error: %w", err)
+	// Capture the cursor for continuous relative mouse motion (FPS camera).
+	// Desktop can capture immediately. Browsers gate pointer lock behind a user
+	// gesture, so on wasm we defer capture to the first click (see processInput).
+	if runtime.GOOS != "js" {
+		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
 	}
-	if r == nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 render")
-	}
-	err = window.SetFullscreen(sdl.WINDOW_FULLSCREEN)
-	if err != nil {
-		return window, nil, fmt.Errorf("failed to initialize SDL2 fullscreen with error: %w", err)
-	}
-	return window, r, nil
 }
 
+// Pixels are stored as four bytes in R,G,B,A order (matching ebiten's
+// WritePixels). Our colors are packed 0xAABBGGRR, so a little-endian write lays
+// the bytes down as R,G,B,A.
 func clearColorBuffer(newColor uint32) {
-	for y := 0; y < windowHeight; y++ {
-		for x := 0; x < windowWidth; x++ {
-			colorBuffer[(y*windowWidth)+x] = newColor
-		}
+	for i := 0; i < len(colorBuffer); i += 4 {
+		binary.LittleEndian.PutUint32(colorBuffer[i:], newColor)
 	}
 }
 
@@ -78,29 +59,17 @@ func clearZBuffer(newZ float64) {
 	}
 }
 
-func renderColorBuffer(r *sdl.Renderer) error {
-	err := colorBufferTexture.Update(
-		nil,
-		unsafe.Pointer(&colorBuffer[0]),
-		windowWidth*int(unsafe.Sizeof(uint32(0))),
-	)
-	if err != nil {
-		return err
-	}
-
-	err = r.Copy(colorBufferTexture, nil, nil)
-	if err != nil {
-		return err
-	}
-
-	return nil
+// renderColorBuffer hands the color buffer straight to ebiten. The buffer is
+// already a flat R,G,B,A byte slice, so there is nothing to convert or copy.
+func renderColorBuffer(screen *ebiten.Image) {
+	screen.WritePixels(colorBuffer)
 }
 
 func drawGrid() {
 	for y := 0; y < windowHeight; y++ {
 		for x := 0; x < windowWidth; x++ {
 			if y%10 == 0 || x%10 == 0 {
-				colorBuffer[(y*windowWidth)+x] = 0xFF333333
+				drawPixel(x, y, 0xFF333333)
 			}
 		}
 	}
@@ -116,7 +85,8 @@ func drawRectangle(x, y, w, h int, color uint32) {
 
 func drawPixel(x, y int, color uint32) {
 	if x >= 0 && y >= 0 && x < windowWidth && y < windowHeight {
-		colorBuffer[(y*windowWidth)+x] = color
+		idx := ((y * windowWidth) + x) * 4
+		binary.LittleEndian.PutUint32(colorBuffer[idx:], color)
 	}
 }
 
