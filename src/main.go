@@ -146,10 +146,12 @@ func (g *Game) Draw(screen *ebiten.Image) {
 
 	}
 	renderColorBuffer(screen)
+	drawRenderModeToolbar(screen)
 	// Overlay the FPS counter on top of the rendered frame
-	ebitenutil.DebugPrint(screen, fmt.Sprintf(
+	ebitenutil.DebugPrintAt(screen, fmt.Sprintf(
 		"FPS: %.1f, TPS: %.1f\nPolygons: %d  Triangles: %d",
-		ebiten.ActualFPS(), ebiten.ActualTPS(), polygonsRendered, len(trianglesToRender)))
+		ebiten.ActualFPS(), ebiten.ActualTPS(), polygonsRendered, len(trianglesToRender)),
+		8, renderModeToolbarHeight()+8)
 	// Clear color buffer
 	clearColorBuffer(0xFF000000)
 	// Clear Z-buffer
@@ -329,18 +331,32 @@ func update() {
 // processInput handles per-frame keyboard and mouse input. It returns true when
 // the user has requested to quit.
 func processInput() (quit bool) {
-	// Capture the cursor for FPS mouse-look. On web, pointer lock is gated behind
-	// a user gesture and the browser releases it when Esc is pressed, so we
-	// (re)capture on a left click whenever the cursor isn't currently captured.
-	if ebiten.CursorMode() != ebiten.CursorModeCaptured &&
-		inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
-		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+	// UI clicks are handled before pointer capture so the toolbar remains usable.
+	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
+		mouseX, mouseY := ebiten.CursorPosition()
+		if handleRenderModeButtonClick(mouseX, mouseY) {
+			return false
+		}
+
+		// Capture the cursor for FPS mouse-look. Browsers gate pointer lock behind
+		// a user gesture and release it on Esc; desktop follows the same click-to-
+		// capture flow so the toolbar is clickable before capture.
+		if ebiten.CursorMode() != ebiten.CursorModeCaptured {
+			ebiten.SetCursorMode(ebiten.CursorModeCaptured)
+		}
 	}
 
-	// On desktop, Esc quits. On web, Esc is the browser's "release pointer lock"
-	// gesture, so we leave the demo running and let a click re-capture the cursor.
-	if runtime.GOOS != "js" && inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
-		return true
+	// Esc releases pointer capture first so the toolbar remains reachable after
+	// using mouse-look. On desktop, pressing Esc again while uncaptured quits.
+	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
+		if ebiten.CursorMode() == ebiten.CursorModeCaptured {
+			ebiten.SetCursorMode(ebiten.CursorModeVisible)
+			wasCaptured = false
+			return false
+		}
+		if runtime.GOOS != "js" {
+			return true
+		}
 	}
 
 	// Render / cull mode toggles (one-shot on key press)

@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/binary"
 	"math"
-	"runtime"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )
@@ -34,12 +33,8 @@ func initializeWindow() {
 	ebiten.SetWindowSize(windowWidth, windowHeight)
 	ebiten.SetFullscreen(true)
 
-	// Capture the cursor for continuous relative mouse motion (FPS camera).
-	// Desktop can capture immediately. Browsers gate pointer lock behind a user
-	// gesture, so on wasm we defer capture to the first click (see processInput).
-	if runtime.GOOS != "js" {
-		ebiten.SetCursorMode(ebiten.CursorModeCaptured)
-	}
+	// Cursor capture is started from processInput after a click outside the UI,
+	// keeping the in-game toolbar clickable on every target.
 }
 
 // Pixels are stored as four bytes in R,G,B,A order (matching ebiten's
