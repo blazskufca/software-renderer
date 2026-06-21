@@ -7,86 +7,63 @@ import (
 	"github.com/hajimehoshi/ebiten/v2"
 )
 
-type cullMode int
-
-type renderMode int
-
-const (
-	CULL_NONE cullMode = iota
-	CULL_BACKFACE
-)
-
-const (
-	RENDER_WIRE renderMode = iota
-	RENDER_WIRE_VERTEX
-	RENDER_FILL_TRIANGLE
-	RENDER_FILL_TRIANGLE_WIRE
-	RENDER_TEXTURED
-	RENDER_TEXTURED_WIRE
-)
-
 // initializeWindow configures the ebiten window and its render resolution.
-func initializeWindow() {
-	windowHeight = 720
-	windowWidth = 1280
+func (r *Renderer[T]) initializeWindow() {
 	ebiten.SetWindowTitle("3D renderer")
-	ebiten.SetWindowSize(windowWidth, windowHeight)
-	ebiten.SetFullscreen(true)
-
-	// Cursor capture is started from processInput after a click outside the UI,
-	// keeping the in-game toolbar clickable on every target.
+	ebiten.SetWindowSize(r.Config.WindowWidth, r.Config.WindowHeight)
 }
 
 // Pixels are stored as four bytes in R,G,B,A order (matching ebiten's
 // WritePixels). Our colors are packed 0xAABBGGRR, so a little-endian write lays
 // the bytes down as R,G,B,A.
-func clearColorBuffer(newColor uint32) {
-	for i := 0; i < len(colorBuffer); i += 4 {
-		binary.LittleEndian.PutUint32(colorBuffer[i:], newColor)
+func (r *Renderer[T]) clearColorBuffer(newColor uint32) {
+	for i := 0; i < len(r.ColorBuffer); i += 4 {
+		binary.LittleEndian.PutUint32(r.ColorBuffer[i:], newColor)
 	}
 }
 
-func clearZBuffer(newZ float64) {
-	for y := 0; y < windowHeight; y++ {
-		for x := 0; x < windowWidth; x++ {
-			zBuffer[(y*windowWidth)+x] = newZ
+func (r *Renderer[T]) clearZBuffer(newZ T) {
+	for y := 0; y < r.Config.WindowHeight; y++ {
+		for x := 0; x < r.Config.WindowWidth; x++ {
+			r.ZBuffer[(y*r.Config.WindowWidth)+x] = newZ
+
 		}
 	}
 }
 
 // renderColorBuffer hands the color buffer straight to ebiten. The buffer is
 // already a flat R,G,B,A byte slice, so there is nothing to convert or copy.
-func renderColorBuffer(screen *ebiten.Image) {
-	screen.WritePixels(colorBuffer)
+func (r *Renderer[T]) renderColorBuffer(screen *ebiten.Image) {
+	screen.WritePixels(r.ColorBuffer)
 }
 
-func drawGrid() {
-	for y := 0; y < windowHeight; y++ {
-		for x := 0; x < windowWidth; x++ {
+func (r *Renderer[T]) drawGrid() {
+	for y := 0; y < r.Config.WindowHeight; y++ {
+		for x := 0; x < r.Config.WindowWidth; x++ {
 			if y%10 == 0 || x%10 == 0 {
-				drawPixel(x, y, 0xFF333333)
+				r.drawPixel(x, y, 0xFF333333)
 			}
 		}
 	}
 }
 
-func drawRectangle(x, y, w, h int, color uint32) {
+func (r *Renderer[T]) drawRectangle(x, y, w, h int, color uint32) {
 	for currentY := y; currentY < (h + y); currentY++ {
 		for currentX := x; currentX < (w + x); currentX++ {
-			drawPixel(currentX, currentY, color)
+			r.drawPixel(currentX, currentY, color)
 		}
 	}
 }
 
-func drawPixel(x, y int, color uint32) {
-	if x >= 0 && y >= 0 && x < windowWidth && y < windowHeight {
-		idx := ((y * windowWidth) + x) * 4
-		binary.LittleEndian.PutUint32(colorBuffer[idx:], color)
+func (r *Renderer[T]) drawPixel(x, y int, color uint32) {
+	if x >= 0 && y >= 0 && x < r.Config.WindowWidth && y < r.Config.WindowHeight {
+		idx := ((y * r.Config.WindowWidth) + x) * 4
+		binary.LittleEndian.PutUint32(r.ColorBuffer[idx:], color)
 	}
 }
 
 // drawLine implements a DDA algorithm for drawing lines
-func drawLine(x0, y0, x1, y1 int, color uint32) {
+func (r *Renderer[T]) drawLine(x0, y0, x1, y1 int, color uint32) {
 	deltaX := x1 - x0
 	deltaY := y1 - y0
 
@@ -102,14 +79,14 @@ func drawLine(x0, y0, x1, y1 int, color uint32) {
 	yCur := float64(y0)
 	xCur := float64(x0)
 	for i := 0.0; i <= sideLength; i++ {
-		drawPixel(int(math.Round(xCur)), int(math.Round(yCur)), color)
+		r.drawPixel(int(math.Round(xCur)), int(math.Round(yCur)), color)
 		yCur += yInc
 		xCur += xInc
 	}
 }
 
-func drawTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
-	drawLine(x0, y0, x1, y1, color)
-	drawLine(x1, y1, x2, y2, color)
-	drawLine(x2, y2, x0, y0, color)
+func (r *Renderer[T]) drawTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
+	r.drawLine(x0, y0, x1, y1, color)
+	r.drawLine(x1, y1, x2, y2, color)
+	r.drawLine(x2, y2, x0, y0, color)
 }

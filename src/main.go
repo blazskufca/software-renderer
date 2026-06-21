@@ -7,6 +7,14 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/blazskufca/software-renderer/internal/camera"
+	"github.com/blazskufca/software-renderer/internal/clipping"
+	mesh "github.com/blazskufca/software-renderer/internal/face"
+	"github.com/blazskufca/software-renderer/internal/light"
+	"github.com/blazskufca/software-renderer/internal/matrix"
+	"github.com/blazskufca/software-renderer/internal/texture"
+	"github.com/blazskufca/software-renderer/internal/utils"
+	"github.com/blazskufca/software-renderer/internal/vector"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/ebitenutil"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
@@ -19,39 +27,101 @@ const (
 	cubeNMeshVertices = 8
 )
 
+type cullMode int
+
+type renderMode int
+
+const (
+	CULL_NONE cullMode = iota
+	CULL_BACKFACE
+)
+
+const (
+	RENDER_WIRE renderMode = iota
+	RENDER_WIRE_VERTEX
+	RENDER_FILL_TRIANGLE
+	RENDER_FILL_TRIANGLE_WIRE
+	RENDER_TEXTURED
+	RENDER_TEXTURED_WIRE
+)
+
 var (
-	windowWidth       = 2160
-	windowHeight      = 4069
-	colorBuffer       []byte
-	zBuffer           []float64
-	previousFrameTime time.Time
-	wasCaptured       bool
-	prevMouseX        int
-	prevMouseY        int
-	trianglesToRender []triangle
-	polygonsRendered  int   // clipped polygons that survived culling this frame
-	renderMethod            = RENDER_WIRE
-	cullMethod              = CULL_BACKFACE
-	projectionMatrix  mat4  = mat4{}
-	globalLight       light = light{direction: vec3{0, 0, 1}}
-	deltaTime         float64
-	meshes            []*mesh
+// previousFrameTime time.Time
+// wasCaptured       bool
+// prevMouseX        int
+// prevMouseY        int
+// trianglesToRender []triangle
+// polygonsRendered  int   // clipped polygons that survived culling this frame
+// renderMethod            = RENDER_WIRE
+// cullMethod              = CULL_BACKFACE
+// projectionMatrix  mat4  = mat4{}
+// globalLight       light = light{direction: vector.vec3{0, 0, 1}}
+// deltaTime         float64
+// meshes            []*mesh
 )
 
 // Game implements ebiten.Game, driving the software renderer through ebiten's
 // Update/Draw loop.
-type Game struct{}
+type Config struct {
+	WindowWidth             int
+	WindowHeight            int
+	FovY                    float64
+	FovX                    float64
+	AspectRatioY            float64
+	AspectRatioX            float64
+	ZNear                   float64
+	ZFar                    float64
+	MaximumNumberOfPolygons int
+	MouseWasCaptured        bool
+}
 
-func setup() error {
-	colorBuffer = make([]byte, windowWidth*windowHeight*4)
-	zBuffer = make([]float64, windowWidth*windowHeight)
+type Renderer[T utils.Numeric] struct {
+	Config            Config
+	ColorBuffer       []byte
+	ZBuffer           []T
+	frustumPlanes     [6]clipping.Plane[T]
+	projectionMatrix  matrix.Mat4[T]
+	meshes            []*mesh.Mesh[T]
+	trianglesToDraw   []triangle[T]
+	renderMethod      renderMode
+	cullMode          cullMode
+	previousFrameTime time.Time
+	deltaTime         float64
+	camera            camera.Camera[T]
+	light             light.Light[T]
+	prevMouseX        int
+	prevMouseY        int
+}
 
-	FOVY := math.Pi / 3 // FOV needs to be in radians -> math.pi/3 = 60deg
-	aspectRatioY := float64(windowHeight) / float64(windowWidth)
-	aspectRatioX := float64(windowWidth) / float64(windowHeight)
-	FOVX := 2 * (math.Atan(math.Tan(FOVY/2) * aspectRatioX))
-	// We've randomly picked zNear and zFar as these valeues
-	zNear, zFar := 0.1, 100.0
+type RendererOpts[T utils.Numeric] func(*Renderer[T])
+
+func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
+	config := Config{
+		WindowWidth:             960,
+		WindowHeight:            480,
+		FovY:                    math.Pi / 3,
+		ZNear:                   1.0,
+		ZFar:                    100.0,
+		MaximumNumberOfPolygons: 10,
+	}
+
+	renderer := &Renderer[T]{Config: config, camera: camera.Camera[T]{}}
+	for _, opt := range opts {
+		opt(renderer)
+	}
+	renderer.Config.AspectRatioY = float64(renderer.Config.WindowHeight) / float64(renderer.Config.WindowWidth)
+	renderer.Config.AspectRatioX = float64(renderer.Config.WindowWidth) / float64(renderer.Config.WindowHeight)
+	renderer.Config.FovX = 2 * (math.Atan(math.Tan(renderer.Config.FovY/2) * renderer.Config.AspectRatioX))
+	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{Y: 10}}
+	renderer.camera.Direction = vector.Vec3[T]{Z: 1} // forward, +Z, normalized
+	renderer.camera.Position = vector.Vec3[T]{}      // origin, looking down +Z at the mesh
+	return renderer
+}
+
+func (r *Renderer[T]) Setup() error {
+	r.initializeWindow()
+	r.ColorBuffer = make([]byte, r.Config.WindowWidth*r.Config.WindowHeight*4)
+	r.ZBuffer = make([]T, r.Config.WindowWidth*r.Config.WindowHeight)
 	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
 	//for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
 	//	// Extract the individual bytes and cast them to uint32 so we can shift them
@@ -62,106 +132,80 @@ func setup() error {
 	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
 	//	meshTexture[i/4] = pixelColor
 	//}
-	// Initialize the perspective projection matrix
-	projectionMatrix = mat4MakePerspective(FOVY, aspectRatioY, zNear, zFar)
-	initFrustumPlanes(FOVX, FOVY, zNear, zFar)
-	currentMesh, err := newMeshFromFromFile("assets/f18-superhornet.obj", func(m *mesh) error {
-		tw, th, meshTexture, err := loadTextureData("assets/Diffuse.jpg")
-		if err != nil {
-			return err
-		}
-		m.texture = MeshTextureData{
-			pixelData: meshTexture,
-			width:     tw,
-			height:    th,
-		}
-		return nil
-	}, func(m *mesh) error {
-		m.translation = vec3{10, 0, 0}
-		return nil
-	}, func(m *mesh) error {
-		m.mirrorHorizontally()
-		return nil
-	})
-	if err != nil {
-		return fmt.Errorf("failed to load obj: %w", err)
-	}
-	meshes = append(meshes, &currentMesh)
-	currentMesh1, err := newMeshFromFromFile("assets/f22.obj", func(m *mesh) error {
-		tw, th, meshTexture, err := loadTextureData("assets/f22.png")
-		if err != nil {
-			return err
-		}
-		m.texture = MeshTextureData{
-			pixelData: meshTexture,
-			width:     tw,
-			height:    th,
-		}
-		m.scale = vec3{X: 1, Y: 1, Z: 1}
-		return nil
-	}, func(m *mesh) error {
-		m.rotation = vec3{0, math.Pi / 2, 0}
-		m.translation = vec3{X: -5}
-		m.scale = vec3{X: 5, Y: 5, Z: 5}
-		return nil
-	})
 
+	// Initialize the perspective projection matrix
+	m := matrix.Mat4MakePerspective[T, T](T(r.Config.FovY), T(r.Config.AspectRatioY), T(r.Config.ZNear), T(r.Config.ZFar))
+	r.projectionMatrix = m
+	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.Config.FovX), T(r.Config.FovY), T(r.Config.ZNear), T(r.Config.ZFar))
+	currentMesh, err := mesh.NewMeshFromFile[T]("assets/f18-superhornet.obj")
 	if err != nil {
-		return fmt.Errorf("failed to load obj: %w", err)
+		return err
 	}
-	meshes = append(meshes, &currentMesh1)
+	currentMesh.MirrorHorizontally()
+	// Load the diffuse texture for the mesh. LoadTextureData returns primitives
+	// (it can't import the mesh package), so build the TextureData here.
+	tw, th, pixels, err := texture.LoadTextureData("assets/Diffuse.jpg")
+	if err != nil {
+		return err
+	}
+	currentMesh.Texture = mesh.TextureData{PixelData: pixels, Width: tw, Height: th}
+	// Push the mesh in front of the camera (which sits at the origin looking down
+	// +Z) so it lands inside the view frustum (ZNear..ZFar).
+	currentMesh.Translation = vector.Vec3[T]{Z: 5}
+	r.meshes = append(r.meshes, &currentMesh)
+
 	//currentMesh = newCubeMesh()
 	return nil
 }
 
-func (g *Game) Draw(screen *ebiten.Image) {
-	for i := 0; i < len(trianglesToRender); i++ {
-		triangle := trianglesToRender[i]
-		if renderMethod == RENDER_FILL_TRIANGLE || renderMethod == RENDER_FILL_TRIANGLE_WIRE {
-			drawFilledTriangle(
+func (r *Renderer[T]) Draw(screen *ebiten.Image) {
+	for i := 0; i < len(r.trianglesToDraw); i++ {
+		triangle := r.trianglesToDraw[i]
+		if r.renderMethod == RENDER_FILL_TRIANGLE || r.renderMethod == RENDER_FILL_TRIANGLE_WIRE {
+			r.drawFilledTriangle(
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
 				triangle.color)
 		}
 
-		if renderMethod == RENDER_TEXTURED || renderMethod == RENDER_TEXTURED_WIRE {
-			drawTexturedTriangle(
-				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].u, triangle.textCoords[0].v,
-				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].u, triangle.textCoords[1].v,
-				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].u, triangle.textCoords[2].v,
+		if r.renderMethod == RENDER_TEXTURED || r.renderMethod == RENDER_TEXTURED_WIRE {
+			r.drawTexturedTriangle(
+				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].U, triangle.textCoords[0].V,
+				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].U, triangle.textCoords[1].V,
+				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].U, triangle.textCoords[2].V,
 				triangle.flatShadePercent, triangle.texture)
 		}
 
-		if renderMethod == RENDER_WIRE || renderMethod == RENDER_WIRE_VERTEX || renderMethod == RENDER_FILL_TRIANGLE_WIRE || renderMethod == RENDER_TEXTURED_WIRE {
-			drawTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
+		if r.renderMethod == RENDER_WIRE || r.renderMethod == RENDER_WIRE_VERTEX || r.renderMethod == RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == RENDER_TEXTURED_WIRE {
+			r.drawTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
 				int(triangle.points[1].X), int(triangle.points[1].Y),
 				int(triangle.points[2].X), int(triangle.points[2].Y), 0xFFFFFFFF)
 		}
-		if renderMethod == RENDER_WIRE_VERTEX {
-			drawRectangle(int(triangle.points[0].X)-3, int(triangle.points[0].Y)-3, 6, 6, 0xFFFFFF00)
-			drawRectangle(int(triangle.points[1].X)-3, int(triangle.points[1].Y)-3, 6, 6, 0xFFFFFF00)
-			drawRectangle(int(triangle.points[2].X)-3, int(triangle.points[2].Y)-3, 6, 6, 0xFFFFFF00)
+		if r.renderMethod == RENDER_WIRE_VERTEX {
+			r.drawRectangle(int(triangle.points[0].X)-3, int(triangle.points[0].Y)-3, 6, 6, 0xFFFFFF00)
+			r.drawRectangle(int(triangle.points[1].X)-3, int(triangle.points[1].Y)-3, 6, 6, 0xFFFFFF00)
+			r.drawRectangle(int(triangle.points[2].X)-3, int(triangle.points[2].Y)-3, 6, 6, 0xFFFFFF00)
 		}
 
 	}
-	renderColorBuffer(screen)
-	drawRenderModeToolbar(screen)
+	r.renderColorBuffer(screen)
+	r.drawRenderModeToolbar(screen)
 	// Overlay the FPS counter on top of the rendered frame
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf(
-		"FPS: %.1f, TPS: %.1f\nPolygons: %d  Triangles: %d",
-		ebiten.ActualFPS(), ebiten.ActualTPS(), polygonsRendered, len(trianglesToRender)),
-		8, renderModeToolbarHeight()+8)
+		"FPS: %.1f, TPS: %.1f\nTriangles: %d",
+		ebiten.ActualFPS(), ebiten.ActualTPS(), len(r.trianglesToDraw)),
+		8, r.renderModeToolbarHeight()+8)
 	// Clear color buffer
-	clearColorBuffer(0xFF000000)
+	r.clearColorBuffer(0xFF000000)
 	// Clear Z-buffer
-	clearZBuffer(1)
+	r.clearZBuffer(1)
 }
 
 // Layout reports the renderer's internal resolution; ebiten scales this to the
 // actual (fullscreen) window.
-func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return windowWidth, windowHeight
+func (r *Renderer[T]) Layout(outsideWidth, outsideHeight int) (int, int) {
+	return r.Config.WindowWidth, r.Config.WindowHeight
 }
 
 // project applies perspective projection to vec3 point
@@ -172,23 +216,16 @@ func (g *Game) Layout(outsideWidth, outsideHeight int) (int, int) {
 //	return projectedPoint
 //}
 
-func update() {
+func (r *Renderer[T]) update() {
 	// ebiten drives the frame pacing (fixed TPS), so we no longer sleep here;
-	// deltaTime is measured from wall-clock time between updates.
-	trianglesToRender = trianglesToRender[:0]
-	polygonsRendered = 0
+	// deltaTime is measured in Update, before input is processed.
+	r.trianglesToDraw = r.trianglesToDraw[:0]
 
-	now := time.Now()
-	if previousFrameTime.IsZero() {
-		previousFrameTime = now
-	}
-	deltaTime = now.Sub(previousFrameTime).Seconds()
-	previousFrameTime = now
-	for _, currentMesh := range meshes {
+	for _, currentMesh := range r.meshes {
 		if currentMesh == nil {
 			panic("nil currentMesh")
 		}
-		for _, mutation := range currentMesh.perFrameMutations {
+		for _, mutation := range currentMesh.PerFrameMutations {
 			err := mutation(currentMesh)
 			if err != nil {
 				panic(err)
@@ -206,69 +243,66 @@ func update() {
 		//currentMesh.scale.Y += 0.001
 		//currentMesh.translation.X += 0.01
 
-		//globalCamera.position.X += 0.008 * deltaTime
-		//globalCamera.position.Y += 0.008
-		//currentMesh.translation.Y = -1.5
-		scaleMatrix := mat4MakeScale(currentMesh.scale.X, currentMesh.scale.Y, currentMesh.scale.Z)
-		translationMatrix := mat4MakeTranslation(currentMesh.translation.X, currentMesh.translation.Y, currentMesh.translation.Z)
-		rotationMatrixX, rotationMatrixY, rotationMatrixZ := mat4MakeRotationX(currentMesh.rotation.X), mat4MakeRotationY(currentMesh.rotation.Y), mat4MakeRotationZ(currentMesh.rotation.Z)
+		scaleMatrix := matrix.Mat4MakeScale[T](currentMesh.Scale.X, currentMesh.Scale.Y, currentMesh.Scale.Z)
+		translationMatrix := matrix.Mat4MakeTranslation[T](currentMesh.Translation.X, currentMesh.Translation.Y, currentMesh.Translation.Z)
+		rotationMatrixX, rotationMatrixY, rotationMatrixZ := matrix.Mat4MakeRotationX[T](currentMesh.Rotation.X), matrix.Mat4MakeRotationY[T](currentMesh.Rotation.Y), matrix.Mat4MakeRotationZ[T](currentMesh.Rotation.Z)
 		// Create a view matrix
 		// Start the target as normalized Z axis
-		target := vec3{Z: 1}
+		target := vector.Vec3[T]{Z: 1}
 
-		cameraYaw := mat4MakeRotationY(globalCamera.yawAngle)
-		cameraPitch := mat4MakeRotationX(globalCamera.pitchAngle)
-		cameraRotation := cameraYaw.mulMat4(cameraPitch)
-		globalCamera.direction = vec3FromVec4(cameraRotation.mulVec4(vec4FromVec3(target)))
+		cameraYaw := matrix.Mat4MakeRotationY[T](T(r.camera.YawAngle))
+		cameraPitch := matrix.Mat4MakeRotationX[T](T(r.camera.PitchAngle))
+		cameraRotation := cameraYaw.MulMat4(cameraPitch)
+		r.camera.Direction = cameraRotation.MulVec4(target.ToVec4()).ToVec3()
 
-		target = globalCamera.position.add(globalCamera.direction)
+		target = r.camera.Position.Add(r.camera.Direction)
 
-		viewMatrix := mat4LookAt(globalCamera.position, target, vec3{0, 1, 0})
+		viewMatrix := matrix.Mat4LookAt(r.camera.Position, target, vector.Vec3[T]{Y: 1})
 
-		for i := 0; i < len(currentMesh.faces); i++ {
+		for i := 0; i < len(currentMesh.Faces); i++ {
 			// Face index into the vertices array
 			//if i != 4 {
 			//	continue
 			//}
-			meshFace := currentMesh.faces[i]
-			facesVertices := [3]vec3{}
+			meshFace := currentMesh.Faces[i]
+			facesVertices := [3]vector.Vec3[T]{}
 
-			facesVertices[0] = currentMesh.vertices[meshFace.a]
-			facesVertices[1] = currentMesh.vertices[meshFace.b]
-			facesVertices[2] = currentMesh.vertices[meshFace.c]
+			facesVertices[0] = currentMesh.Vertices[meshFace.A]
+			facesVertices[1] = currentMesh.Vertices[meshFace.B]
+			facesVertices[2] = currentMesh.Vertices[meshFace.C]
 			// order matters
 			// Scale -> rotate -> translate
 
-			worldMatrix := mat4Identity()
-			worldMatrix = scaleMatrix.mulMat4(worldMatrix)
-			worldMatrix = rotationMatrixZ.mulMat4(worldMatrix)
-			worldMatrix = rotationMatrixY.mulMat4(worldMatrix)
-			worldMatrix = rotationMatrixX.mulMat4(worldMatrix)
-			worldMatrix = translationMatrix.mulMat4(worldMatrix)
-			worldMatrix = viewMatrix.mulMat4(worldMatrix)
-			var transformedVertexArr [3]vec4
+			worldMatrix := matrix.Mat4Identity[T]()
+			worldMatrix = scaleMatrix.MulMat4(worldMatrix)
+			worldMatrix = rotationMatrixZ.MulMat4(worldMatrix)
+			worldMatrix = rotationMatrixY.MulMat4(worldMatrix)
+			worldMatrix = rotationMatrixX.MulMat4(worldMatrix)
+			worldMatrix = translationMatrix.MulMat4(worldMatrix)
+			worldMatrix = viewMatrix.MulMat4(worldMatrix)
+			var transformedVertexArr [3]vector.Vec4[T]
 			for j := 0; j < 3; j++ {
-				transformedVertex := vec4FromVec3(facesVertices[j])
-				transformedVertex = worldMatrix.mulVec4(transformedVertex)
+				transformedVertex := facesVertices[j].ToVec4()
+				transformedVertex = worldMatrix.MulVec4(transformedVertex)
 				transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
 			}
-			vectorA, vectorB, vectorC := vec3FromVec4(transformedVertexArr[0]), vec3FromVec4(transformedVertexArr[1]), vec3FromVec4(transformedVertexArr[2])
-			BAVector, CAVector := vectorB.sub(vectorA), vectorC.sub(vectorA)
+			vectorA, vectorB, vectorC := transformedVertexArr[0].ToVec3(), transformedVertexArr[1].ToVec3(), transformedVertexArr[2].ToVec3()
+			BAVector, CAVector := vectorB.Sub(vectorA), vectorC.Sub(vectorA)
 			// For vectors BA and CA we also only care about the direction and not the magnitude
-			BAVector.normalize()
-			CAVector.normalize()
+			BAVector.Normalize()
+			CAVector.Normalize()
 
 			// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
 			// Face normal vector can be normalized
-			faceNormal := BAVector.cross(CAVector)
-			faceNormal.normalize()
+			faceNormal := BAVector.Cross(CAVector)
+			faceNormal.Normalize()
 
-			if cullMethod == CULL_BACKFACE {
+			if r.cullMode == CULL_BACKFACE {
 				// Backface culling
-				origin := vec3{} // Camera position can change so we need a real 0, 0, 0
-				cameraRayVec := origin.sub(vectorA)
+				origin := vector.Vec3[T]{} // Camera position can change so we need a real 0, 0, 0
+				cameraRayVec := origin.Sub(vectorA)
 
-				cameraRayFaceNormalDot := faceNormal.dot(cameraRayVec)
+				cameraRayFaceNormalDot := faceNormal.Dot(cameraRayVec)
 
 				// If dot product is less than 0 we should hide the face
 				if cameraRayFaceNormalDot < 0 {
@@ -277,41 +311,38 @@ func update() {
 			}
 
 			// Clipping stage
-			poly := newPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
-			poly.clipPolygon()
+			poly := clipping.NewPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
+			poly.ClipPolygon(&r.frustumPlanes)
 			// Break the clipped polygon apart into triangles (fan triangulation)
-			var clippedTriangles [maximumNumberOfPolygonTriangles]triangle
-			var numberOfClippedTriangles int = poly.numberOfVertices - 2
-			if numberOfClippedTriangles > 0 {
-				polygonsRendered++
-			}
+			var clippedTriangles [10]triangle[T]
+			var numberOfClippedTriangles int = poly.NumberOfVertices - 2
 			for t := 0; t < numberOfClippedTriangles; t++ {
-				tr := triangle{}
-				tr.points = [3]vec4{vec4FromVec3(poly.vertices[0]), vec4FromVec3(poly.vertices[t+1]), vec4FromVec3(poly.vertices[t+2])}
-				tr.textCoords = [3]tex2{poly.texCoords[0], poly.texCoords[t+1], poly.texCoords[t+2]}
+				tr := triangle[T]{}
+				tr.points = [3]vector.Vec4[T]{poly.Vertices[0].ToVec4(), poly.Vertices[t+1].ToVec4(), poly.Vertices[t+2].ToVec4()}
+				tr.textCoords = [3]texture.Tex2[T]{poly.TexCoords[0], poly.TexCoords[t+1], poly.TexCoords[t+2]}
 				clippedTriangles[t] = tr
 			}
 			for i := 0; i < numberOfClippedTriangles; i++ {
 				clippedTriangle := clippedTriangles[i]
 
-				var projectedPoints [3]vec4
+				var projectedPoints [3]vector.Vec4[T]
 				for j := 0; j < len(transformedVertexArr); j++ {
-					projectedPoints[j] = projectionMatrix.mat4MulVec4Project(clippedTriangle.points[j])
+					projectedPoints[j] = r.projectionMatrix.Mat4MulVec4Project(clippedTriangle.points[j])
 
 					// Scale into the view
-					projectedPoints[j].X *= float64(windowWidth / 2)
-					projectedPoints[j].Y *= float64(windowHeight / 2)
+					projectedPoints[j].X *= T(r.Config.WindowWidth / 2)
+					projectedPoints[j].Y *= T(r.Config.WindowHeight / 2)
 
 					// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
 					projectedPoints[j].Y *= -1
 					// Translate the projected point into the middle of the screen
-					projectedPoints[j].X += float64(windowWidth / 2)
-					projectedPoints[j].Y += float64(windowHeight / 2)
+					projectedPoints[j].X += T(r.Config.WindowWidth / 2)
+					projectedPoints[j].Y += T(r.Config.WindowHeight / 2)
 				}
-				var projectedTriangle triangle
+				var projectedTriangle triangle[T]
 				// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
-				flatShadePercent := -faceNormal.dot(globalLight.direction)
-				projectedTriangle.color = lightApplyIntensity(meshFace.color, flatShadePercent)
+				flatShadePercent := -faceNormal.Dot(r.light.Direction)
+				projectedTriangle.color = light.LightApplyIntensity(meshFace.Color, float32(flatShadePercent))
 				projectedTriangle.flatShadePercent = flatShadePercent
 				projectedTriangle.points[0] = projectedPoints[0]
 				projectedTriangle.points[1] = projectedPoints[1]
@@ -320,8 +351,8 @@ func update() {
 				projectedTriangle.textCoords[1] = clippedTriangle.textCoords[1]
 				projectedTriangle.textCoords[2] = clippedTriangle.textCoords[2]
 				projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
-				projectedTriangle.texture = &currentMesh.texture
-				trianglesToRender = append(trianglesToRender, projectedTriangle)
+				projectedTriangle.texture = &currentMesh.Texture
+				r.trianglesToDraw = append(r.trianglesToDraw, projectedTriangle)
 			}
 		}
 	}
@@ -330,11 +361,11 @@ func update() {
 
 // processInput handles per-frame keyboard and mouse input. It returns true when
 // the user has requested to quit.
-func processInput() (quit bool) {
+func (r *Renderer[T]) processInput() (quit bool) {
 	// UI clicks are handled before pointer capture so the toolbar remains usable.
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		mouseX, mouseY := ebiten.CursorPosition()
-		if handleRenderModeButtonClick(mouseX, mouseY) {
+		if r.handleRenderModeButtonClick(mouseX, mouseY) {
 			return false
 		}
 
@@ -351,7 +382,7 @@ func processInput() (quit bool) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if ebiten.CursorMode() == ebiten.CursorModeCaptured {
 			ebiten.SetCursorMode(ebiten.CursorModeVisible)
-			wasCaptured = false
+			r.Config.MouseWasCaptured = false
 			return false
 		}
 		if runtime.GOOS != "js" {
@@ -361,56 +392,57 @@ func processInput() (quit bool) {
 
 	// Render / cull mode toggles (one-shot on key press)
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
-		renderMethod = RENDER_WIRE_VERTEX
+		r.renderMethod = RENDER_WIRE_VERTEX
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key2) {
-		renderMethod = RENDER_WIRE
+		r.renderMethod = RENDER_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key3) {
-		renderMethod = RENDER_FILL_TRIANGLE
+		r.renderMethod = RENDER_FILL_TRIANGLE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key4) {
-		renderMethod = RENDER_FILL_TRIANGLE_WIRE
+		r.renderMethod = RENDER_FILL_TRIANGLE_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key5) {
-		renderMethod = RENDER_TEXTURED
+		r.renderMethod = RENDER_TEXTURED
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key6) {
-		renderMethod = RENDER_TEXTURED_WIRE
+		r.renderMethod = RENDER_TEXTURED_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		cullMethod = CULL_BACKFACE
+		r.cullMode = CULL_BACKFACE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
-		cullMethod = CULL_NONE
+		r.cullMode = CULL_NONE
+
 	}
 
 	// Camera movement (continuous while held)
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		globalCamera.position.Y += 3 * deltaTime
+		r.camera.Position.Y += 3 * T(r.deltaTime)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyDown) {
-		globalCamera.position.Y -= 3 * deltaTime
+		r.camera.Position.Y -= 3 * T(r.deltaTime)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyA) {
-		right := vec3{Y: 1}.cross(globalCamera.direction) // right = up × forward (left-handed)
-		right.normalize()
-		globalCamera.rightVelocity = right.multiply(5 * deltaTime)
-		globalCamera.position = globalCamera.position.sub(globalCamera.rightVelocity)
+		right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction) // right = up × forward (left-handed)
+		right.Normalize()
+		r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
+		r.camera.Position = r.camera.Position.Sub(r.camera.RightVelocity)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
-		right := vec3{Y: 1}.cross(globalCamera.direction)
-		right.normalize()
-		globalCamera.rightVelocity = right.multiply(5 * deltaTime)
-		globalCamera.position = globalCamera.position.add(globalCamera.rightVelocity)
+		right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction)
+		right.Normalize()
+		r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
+		r.camera.Position = r.camera.Position.Add(r.camera.RightVelocity)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyW) {
-		globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
-		globalCamera.position = globalCamera.position.add(globalCamera.forwardVelocity)
+		r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+		r.camera.Position = r.camera.Position.Add(r.camera.ForwardVelocity)
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyS) {
-		globalCamera.forwardVelocity = globalCamera.direction.multiply(5 * deltaTime)
-		globalCamera.position = globalCamera.position.sub(globalCamera.forwardVelocity)
+		r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+		r.camera.Position = r.camera.Position.Sub(r.camera.ForwardVelocity)
 	}
 
 	// Relative mouse look (only while captured, so the reported position
@@ -419,41 +451,51 @@ func processInput() (quit bool) {
 	// (re)capturing never produces a large delta spike.
 	mouseX, mouseY := ebiten.CursorPosition()
 	captured := ebiten.CursorMode() == ebiten.CursorModeCaptured
-	if !captured || !wasCaptured {
-		prevMouseX, prevMouseY = mouseX, mouseY
-		wasCaptured = captured
+	if !captured || !r.Config.MouseWasCaptured {
+		r.prevMouseX, r.prevMouseY = mouseX, mouseY
+		r.Config.MouseWasCaptured = captured
 		return false
 	}
-	yaw := float64(mouseX - prevMouseX)
-	pitch := float64(mouseY - prevMouseY)
-	prevMouseX, prevMouseY = mouseX, mouseY
+	yaw := float64(mouseX - r.prevMouseX)
+	pitch := float64(mouseY - r.prevMouseY)
+	r.prevMouseX, r.prevMouseY = mouseX, mouseY
 	sensitivity := 0.005
-	globalCamera.yawAngle += yaw * sensitivity
-	globalCamera.pitchAngle -= pitch * sensitivity
-	if globalCamera.pitchAngle > 1.55 {
-		globalCamera.pitchAngle = 1.55
+	r.camera.YawAngle += float32(yaw) * float32(sensitivity)
+	r.camera.PitchAngle -= float32(pitch) * float32(sensitivity)
+	if r.camera.PitchAngle > 1.55 {
+		r.camera.PitchAngle = 1.55
 	}
-	if globalCamera.pitchAngle < -1.55 {
-		globalCamera.pitchAngle = -1.55
+	if r.camera.PitchAngle < -1.55 {
+		r.camera.PitchAngle = -1.55
 	}
 	return false
 }
 
 // Update advances simulation state once per tick.
-func (g *Game) Update() error {
-	if processInput() {
+func (r *Renderer[T]) Update() error {
+	// deltaTime is measured here, before processInput, so that input applied this
+	// tick uses the current frame's delta rather than the previous frame's (and so
+	// the first frame isn't multiplied by a zero delta).
+	now := time.Now()
+	if r.previousFrameTime.IsZero() {
+		r.previousFrameTime = now
+	}
+	r.deltaTime = now.Sub(r.previousFrameTime).Seconds()
+	r.previousFrameTime = now
+
+	if r.processInput() {
 		return ebiten.Termination
 	}
-	update()
+	r.update()
 	return nil
 }
 
 func main() {
-	initializeWindow()
-	if err := setup(); err != nil {
+	r := NewRenderer[float32]()
+	if err := r.Setup(); err != nil {
 		log.Fatal(err)
 	}
-	if err := ebiten.RunGame(&Game{}); err != nil {
+	if err := ebiten.RunGame(r); err != nil {
 		log.Fatal(err)
 	}
 }
