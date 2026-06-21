@@ -25,7 +25,7 @@ func (v *Vec3[T]) RotateY(angle T) {
 }
 
 // RotateY rotates the vector by angle around the Z axis.
-func (v *Vec3[T]) rotateZ(angle T) {
+func (v *Vec3[T]) RotateZ(angle T) {
 	v.X, v.Y = v.X*T(math.Cos(float64(angle)))-v.Y*T(math.Sin(float64(angle))), v.X*T(math.Sin(float64(angle)))+v.Y*T(math.Cos(float64(angle)))
 }
 
@@ -124,7 +124,7 @@ func (v Vec2[T]) Divide(factor T) Vec2[T] {
 }
 
 // Dot preforms a vector dot product between the current vector and the other vector and returns a scalar value of type T
-func (v Vec2[T]) dot(other Vec2[T]) T {
+func (v Vec2[T]) Dot(other Vec2[T]) T {
 	return (v.X * other.X) + (v.Y * other.Y)
 }
 
