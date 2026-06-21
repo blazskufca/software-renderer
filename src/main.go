@@ -115,6 +115,7 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{Y: 10}}
 	renderer.camera.Direction = vector.Vec3[T]{Z: 1} // forward, +Z, normalized
 	renderer.camera.Position = vector.Vec3[T]{}      // origin, looking down +Z at the mesh
+	renderer.cullMode = CULL_BACKFACE
 	return renderer
 }
 
@@ -137,14 +138,13 @@ func (r *Renderer[T]) Setup() error {
 	m := matrix.Mat4MakePerspective[T, T](T(r.Config.FovY), T(r.Config.AspectRatioY), T(r.Config.ZNear), T(r.Config.ZFar))
 	r.projectionMatrix = m
 	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.Config.FovX), T(r.Config.FovY), T(r.Config.ZNear), T(r.Config.ZFar))
-	currentMesh, err := mesh.NewMeshFromFile[T]("assets/f18-superhornet.obj")
+	currentMesh, err := mesh.NewMeshFromFile[T]("assets/race.obj")
 	if err != nil {
 		return err
 	}
-	currentMesh.MirrorHorizontally()
 	// Load the diffuse texture for the mesh. LoadTextureData returns primitives
 	// (it can't import the mesh package), so build the TextureData here.
-	tw, th, pixels, err := texture.LoadTextureData("assets/Diffuse.jpg")
+	tw, th, pixels, err := texture.LoadTextureData("assets/colormap.png")
 	if err != nil {
 		return err
 	}
@@ -162,7 +162,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 	for i := 0; i < len(r.trianglesToDraw); i++ {
 		triangle := r.trianglesToDraw[i]
 		if r.renderMethod == RENDER_FILL_TRIANGLE || r.renderMethod == RENDER_FILL_TRIANGLE_WIRE {
-			r.drawFilledTriangle(
+			r.drawFilledTrianglePineda(
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
@@ -170,7 +170,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 		}
 
 		if r.renderMethod == RENDER_TEXTURED || r.renderMethod == RENDER_TEXTURED_WIRE {
-			r.drawTexturedTriangle(
+			r.drawTexturedTrianglePineda(
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].U, triangle.textCoords[0].V,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].U, triangle.textCoords[1].V,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].U, triangle.textCoords[2].V,

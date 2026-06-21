@@ -301,13 +301,17 @@ func isTopLeft[T utils.Numeric](start, end vector.Vec2[T]) bool {
 // adjacent triangles are drawn exactly once.
 // Signature matches drawFilledTriangle so it can be swapped in directly.
 func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, w1f, x2f, y2f, z2, w2f T, color uint32) {
-	pointA := vector.Vec4[T]{T(x0f), T(y0f), T(z0), T(w0f)}
-	pointB := vector.Vec4[T]{T(x1f), T(y1f), T(z1), T(w1f)}
-	pointC := vector.Vec4[T]{T(x2f), T(y2f), T(z2), T(w2f)}
+	ix0, iy0 := int(x0f), int(y0f)
+	ix1, iy1 := int(x1f), int(y1f)
+	ix2, iy2 := int(x2f), int(y2f)
 
-	aVec2 := pointA.ToVec2()
-	bVec2 := pointB.ToVec2()
-	cVec2 := pointC.ToVec2()
+	pointA := vector.Vec4[T]{T(ix0), T(iy0), z0, w0f}
+	pointB := vector.Vec4[T]{T(ix1), T(iy1), z1, w1f}
+	pointC := vector.Vec4[T]{T(ix2), T(iy2), z2, w2f}
+
+	aVec2 := vector.Vec2[int]{X: ix0, Y: iy0}
+	bVec2 := vector.Vec2[int]{X: ix1, Y: iy1}
+	cVec2 := vector.Vec2[int]{X: ix2, Y: iy2}
 
 	// Signed area can be used at rasterization step to perform backface culling
 	area := edgeCross(aVec2, bVec2, cVec2)
@@ -316,10 +320,10 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 	}
 
 	// Axis aligned bounding box of the triangle, clamped to the screen bounds
-	xMin := T(max(0, min(aVec2.X, bVec2.X, cVec2.X)))
-	yMin := T(max(0, min(aVec2.Y, bVec2.Y, cVec2.Y)))
-	xMax := T(min(r.Config.WindowWidth-1, max(int(aVec2.X), int(bVec2.X), int(cVec2.X))))
-	yMax := T(min(r.Config.WindowHeight-1, max(int(aVec2.Y), int(bVec2.Y), int(cVec2.Y))))
+	xMin := max(0, min(ix0, ix1, ix2))
+	yMin := max(0, min(iy0, iy1, iy2))
+	xMax := min(r.Config.WindowWidth-1, max(ix0, ix1, ix2))
+	yMax := min(r.Config.WindowHeight-1, max(iy0, iy1, iy2))
 
 	// Per-column (moving in +X) and per-row (moving in +Y) deltas for each edge
 	// function. These are constant, which is what lets us step instead of recompute.
@@ -331,24 +335,24 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 	deltaW2Row := bVec2.X - aVec2.X
 
 	// Top-left fill rule: 0 bias keeps edge pixels, -1 bias drops them
-	bias0 := T(-1)
+	bias0 := -1
 	if isTopLeft(bVec2, cVec2) {
-		bias0 = T(0)
+		bias0 = 0
 	}
-	bias1 := T(-1)
+	bias1 := -1
 	if isTopLeft(cVec2, aVec2) {
-		bias1 = T(0)
+		bias1 = 0
 	}
-	bias2 := T(-1)
+	bias2 := -1
 	if isTopLeft(aVec2, bVec2) {
-		bias2 = T(0)
+		bias2 = 0
 	}
 
 	// Seed the edge functions at the top-left corner of the bounding box
-	p0 := vector.Vec2[T]{xMin, yMin}
-	w0Row := edgeCross[T](bVec2, cVec2, p0) + T(bias0)
-	w1Row := edgeCross[T](cVec2, aVec2, p0) + T(bias1)
-	w2Row := edgeCross[T](aVec2, bVec2, p0) + T(bias2)
+	p0 := vector.Vec2[int]{X: xMin, Y: yMin}
+	w0Row := edgeCross(bVec2, cVec2, p0) + bias0
+	w1Row := edgeCross(cVec2, aVec2, p0) + bias1
+	w2Row := edgeCross(aVec2, bVec2, p0) + bias2
 
 	invArea := 1.0 / float64(area)
 
@@ -362,18 +366,18 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 				// interpolation must come from the unbiased edge values, otherwise
 				// they no longer sum to 1 and depth (especially on small/far
 				// triangles, where the bias dominates) comes out wrong.
-				alpha := w0 - bias0*T(invArea)
-				beta := w1 - bias1*T(invArea)
-				gamma := w2 - bias2*T(invArea)
+				alpha := float64(w0-bias0) * invArea
+				beta := float64(w1-bias1) * invArea
+				gamma := float64(w2-bias2) * invArea
 
 				// Interpolate 1/w to get the per pixel depth, same as the scanline path
-				interpolatedReciprocalW := (1/pointA.W)*alpha + (1/pointB.W)*beta + (1/pointC.W)*gamma
+				interpolatedReciprocalW := (1/float64(pointA.W))*alpha + (1/float64(pointB.W))*beta + (1/float64(pointC.W))*gamma
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-				if interpolatedReciprocalW < r.ZBuffer[(r.Config.WindowWidth*int(y))+int(x)] {
-					r.drawPixel(int(x), int(y), color)
+				if T(interpolatedReciprocalW) < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+					r.drawPixel(x, y, color)
 					// Update the Z-buffer with 1/w for current pixel
-					r.ZBuffer[(r.Config.WindowWidth*int(y))+int(x)] = interpolatedReciprocalW
+					r.ZBuffer[(r.Config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}
 			}
 			// Step the edge functions one column to the right
@@ -399,16 +403,20 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 	v1 = 1 - v1
 	v2 = 1 - v2
 
-	pointA := vector.Vec4[T]{x0, y0, z0, w0f}
-	pointB := vector.Vec4[T]{x1, y1, z1, w1f}
-	pointC := vector.Vec4[T]{x2, y2, z2, w2f}
+	ix0, iy0 := int(x0), int(y0)
+	ix1, iy1 := int(x1), int(y1)
+	ix2, iy2 := int(x2), int(y2)
+
+	pointA := vector.Vec4[T]{T(ix0), T(iy0), z0, w0f}
+	pointB := vector.Vec4[T]{T(ix1), T(iy1), z1, w1f}
+	pointC := vector.Vec4[T]{T(ix2), T(iy2), z2, w2f}
 	AUV := texture.Tex2[T]{u0, v0}
 	BUV := texture.Tex2[T]{u1, v1}
 	CUV := texture.Tex2[T]{u2, v2}
 
-	aVec2 := pointA.ToVec2()
-	bVec2 := pointB.ToVec2()
-	cVec2 := pointC.ToVec2()
+	aVec2 := vector.Vec2[int]{X: ix0, Y: iy0}
+	bVec2 := vector.Vec2[int]{X: ix1, Y: iy1}
+	cVec2 := vector.Vec2[int]{X: ix2, Y: iy2}
 
 	// Signed area can be used to cull the triangles
 	area := edgeCross(aVec2, bVec2, cVec2)
@@ -417,10 +425,10 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 	}
 
 	// Axis aligned bounding box of the triangle, clamped to the screen bounds
-	xMin := max(0, min(aVec2.X, bVec2.X, cVec2.X))
-	yMin := max(0, min(aVec2.Y, bVec2.Y, cVec2.Y))
-	xMax := min(r.Config.WindowWidth-1, int(max(aVec2.X, bVec2.X, cVec2.X)))
-	yMax := min(r.Config.WindowHeight-1, int(max(aVec2.Y, bVec2.Y, cVec2.Y)))
+	xMin := max(0, min(ix0, ix1, ix2))
+	yMin := max(0, min(iy0, iy1, iy2))
+	xMax := min(r.Config.WindowWidth-1, max(ix0, ix1, ix2))
+	yMax := min(r.Config.WindowHeight-1, max(iy0, iy1, iy2))
 
 	// Constant per-column and per-row deltas for the incremental edge functions
 	deltaW0Col := bVec2.Y - cVec2.Y
@@ -445,28 +453,28 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 	}
 
 	// Seed the edge functions at the top-left corner of the bounding box
-	p0 := vector.Vec2[T]{xMin, yMin}
-	w0Row := int(edgeCross[T](bVec2, cVec2, p0)) + bias0
-	w1Row := int(edgeCross[T](cVec2, aVec2, p0)) + bias1
-	w2Row := int(edgeCross[T](aVec2, bVec2, p0)) + bias2
+	p0 := vector.Vec2[int]{X: xMin, Y: yMin}
+	w0Row := edgeCross(bVec2, cVec2, p0) + bias0
+	w1Row := edgeCross(cVec2, aVec2, p0) + bias1
+	w2Row := edgeCross(aVec2, bVec2, p0) + bias2
 
 	invArea := 1.0 / float64(area)
 
-	for y := yMin; int(y) <= yMax; y++ {
+	for y := yMin; y <= yMax; y++ {
 		w0, w1, w2 := w0Row, w1Row, w2Row
-		for x := xMin; int(x) <= xMax; x++ {
+		for x := xMin; x <= xMax; x++ {
 			if w0 >= 0 && w1 >= 0 && w2 >= 0 {
 				// Use the unbiased edge values for interpolation (the fill-rule
 				// bias is for coverage only). Biased weights would not sum to 1 and
 				// would corrupt depth/UV on small far triangles.
-				alpha := float64((w0)-bias0) * invArea
+				alpha := float64(w0-bias0) * invArea
 				beta := float64(w1-bias1) * invArea
 				gamma := float64(w2-bias2) * invArea
 
 				// Perspective correct interpolation of U/w and V/w
-				interpolatedU := float64(AUV.U/pointA.W)*alpha + float64(BUV.U/pointB.W)*beta + float64(CUV.U/pointC.W)*gamma
-				interpolatedV := float64(AUV.V/pointA.W)*alpha + float64(BUV.V/pointB.W)*beta + float64(CUV.V/pointC.W)*gamma
-				interpolatedReciprocalW := float64(1/pointA.W)*alpha + float64(1/pointB.W)*beta + float64(1/pointC.W)*gamma
+				interpolatedU := float64(AUV.U)/float64(pointA.W)*alpha + float64(BUV.U)/float64(pointB.W)*beta + float64(CUV.U)/float64(pointC.W)*gamma
+				interpolatedV := float64(AUV.V)/float64(pointA.W)*alpha + float64(BUV.V)/float64(pointB.W)*beta + float64(CUV.V)/float64(pointC.W)*gamma
+				interpolatedReciprocalW := 1/float64(pointA.W)*alpha + 1/float64(pointB.W)*beta + 1/float64(pointC.W)*gamma
 
 				// Divide back both U and V by 1/w
 				interpolatedU /= interpolatedReciprocalW
@@ -480,21 +488,21 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 				// Pixels closer to the viewer need to be bigger than the ones further away
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-				if interpolatedReciprocalW < float64(r.ZBuffer[(r.Config.WindowWidth*int(y))+int(x)]) {
-					r.drawPixel(int(x), int(y), light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
+				if T(interpolatedReciprocalW) < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+					r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
 					// Update the Z-buffer with 1/w for current pixel
-					r.ZBuffer[(r.Config.WindowWidth*int(y))+int(x)] = T(interpolatedReciprocalW)
+					r.ZBuffer[(r.Config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}
 			}
 			// Step the edge functions one column to the right
-			w0 += int(deltaW0Col)
-			w1 += int(deltaW1Col)
-			w2 += int(deltaW2Col)
+			w0 += deltaW0Col
+			w1 += deltaW1Col
+			w2 += deltaW2Col
 		}
 		// Step the edge functions one row down
-		w0Row += int(deltaW0Row)
-		w1Row += int(deltaW1Row)
-		w2Row += int(deltaW2Row)
+		w0Row += deltaW0Row
+		w1Row += deltaW1Row
+		w2Row += deltaW2Row
 	}
 }
 
