@@ -40,9 +40,9 @@ type Config struct {
 }
 
 type Renderer[T utils.Numeric] struct {
-	Config            Config
-	ColorBuffer       []byte
-	ZBuffer           []T
+	config            Config
+	colorBuffer       []byte
+	zBuffer           []T
 	frustumPlanes     [6]clipping.Plane[T]
 	projectionMatrix  matrix.Mat4[T]
 	meshes            []*mesh.Mesh[T]
@@ -98,13 +98,13 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 		MaximumNumberOfPolygons: 10,
 	}
 
-	renderer := &Renderer[T]{Config: c, camera: camera.Camera[T]{}}
+	renderer := &Renderer[T]{config: c, camera: camera.Camera[T]{}}
 	for _, opt := range opts {
 		opt(renderer)
 	}
-	renderer.Config.AspectRatioY = float64(renderer.Config.WindowHeight) / float64(renderer.Config.WindowWidth)
-	renderer.Config.AspectRatioX = float64(renderer.Config.WindowWidth) / float64(renderer.Config.WindowHeight)
-	renderer.Config.FovX = 2 * (math.Atan(math.Tan(renderer.Config.FovY/2) * renderer.Config.AspectRatioX))
+	renderer.config.AspectRatioY = float64(renderer.config.WindowHeight) / float64(renderer.config.WindowWidth)
+	renderer.config.AspectRatioX = float64(renderer.config.WindowWidth) / float64(renderer.config.WindowHeight)
+	renderer.config.FovX = 2 * (math.Atan(math.Tan(renderer.config.FovY/2) * renderer.config.AspectRatioX))
 	renderer.cullMode = config.CULL_BACKFACE
 	renderer.setTextureRaster(config.TEXTURE_PINEDA)
 	renderer.setFillRaster(config.FILL_PINEDA)
@@ -120,8 +120,8 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 
 func (r *Renderer[T]) Setup() error {
 	r.initializeWindow()
-	r.ColorBuffer = make([]byte, r.Config.WindowWidth*r.Config.WindowHeight*4)
-	r.ZBuffer = make([]T, r.Config.WindowWidth*r.Config.WindowHeight)
+	r.colorBuffer = make([]byte, r.config.WindowWidth*r.config.WindowHeight*4)
+	r.zBuffer = make([]T, r.config.WindowWidth*r.config.WindowHeight)
 	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
 	//for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
 	//	// Extract the individual bytes and cast them to uint32 so we can shift them
@@ -134,9 +134,9 @@ func (r *Renderer[T]) Setup() error {
 	//}
 
 	// Initialize the perspective projection matrix
-	m := matrix.Mat4MakePerspective[T, T](T(r.Config.FovY), T(r.Config.AspectRatioY), T(r.Config.ZNear), T(r.Config.ZFar))
+	m := matrix.Mat4MakePerspective[T, T](T(r.config.FovY), T(r.config.AspectRatioY), T(r.config.ZNear), T(r.config.ZFar))
 	r.projectionMatrix = m
-	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.Config.FovX), T(r.Config.FovY), T(r.Config.ZNear), T(r.Config.ZFar))
+	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.config.FovX), T(r.config.FovY), T(r.config.ZNear), T(r.config.ZFar))
 	currentMesh, err := mesh.NewMeshFromFile[T]("assets/race.obj")
 	if err != nil {
 		return err
@@ -205,7 +205,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 // Layout reports the renderer's internal resolution; ebiten scales this to the
 // actual (fullscreen) window.
 func (r *Renderer[T]) Layout(outsideWidth, outsideHeight int) (int, int) {
-	return r.Config.WindowWidth, r.Config.WindowHeight
+	return r.config.WindowWidth, r.config.WindowHeight
 }
 
 // project applies perspective projection to vec3 point
@@ -330,14 +330,14 @@ func (r *Renderer[T]) update() {
 					projectedPoints[j] = r.projectionMatrix.Mat4MulVec4Project(clippedTriangle.points[j])
 
 					// Scale into the view
-					projectedPoints[j].X *= T(r.Config.WindowWidth / 2)
-					projectedPoints[j].Y *= T(r.Config.WindowHeight / 2)
+					projectedPoints[j].X *= T(r.config.WindowWidth / 2)
+					projectedPoints[j].Y *= T(r.config.WindowHeight / 2)
 
 					// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
 					projectedPoints[j].Y *= -1
 					// Translate the projected point into the middle of the screen
-					projectedPoints[j].X += T(r.Config.WindowWidth / 2)
-					projectedPoints[j].Y += T(r.Config.WindowHeight / 2)
+					projectedPoints[j].X += T(r.config.WindowWidth / 2)
+					projectedPoints[j].Y += T(r.config.WindowHeight / 2)
 				}
 				var projectedTriangle triangle[T]
 				// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
@@ -440,7 +440,7 @@ func (r *Renderer[T]) processInput() (quit bool) {
 	if inpututil.IsKeyJustPressed(ebiten.KeyEscape) {
 		if ebiten.CursorMode() == ebiten.CursorModeCaptured {
 			ebiten.SetCursorMode(ebiten.CursorModeVisible)
-			r.Config.MouseWasCaptured = false
+			r.config.MouseWasCaptured = false
 			return false
 		}
 		if runtime.GOOS != "js" {
@@ -513,9 +513,9 @@ func (r *Renderer[T]) processInput() (quit bool) {
 	// (re)capturing never produces a large delta spike.
 	mouseX, mouseY := ebiten.CursorPosition()
 	captured := ebiten.CursorMode() == ebiten.CursorModeCaptured
-	if !captured || !r.Config.MouseWasCaptured {
+	if !captured || !r.config.MouseWasCaptured {
 		r.prevMouseX, r.prevMouseY = mouseX, mouseY
-		r.Config.MouseWasCaptured = captured
+		r.config.MouseWasCaptured = captured
 		return false
 	}
 	yaw := float64(mouseX - r.prevMouseX)

@@ -34,7 +34,7 @@ func (r *Renderer[T]) movementButtons() []holdButton {
 	bh := r.scaledPixels(54)
 	gap := r.scaledPixels(6)
 	margin := r.scaledPixels(12)
-	bottom := r.Config.WindowHeight - margin
+	bottom := r.config.WindowHeight - margin
 
 	row0 := bottom - 3*bh - 2*gap
 	row1 := bottom - 2*bh - gap
@@ -47,9 +47,9 @@ func (r *Renderer[T]) movementButtons() []holdButton {
 	flyCol := margin + 3*(bw+gap)
 
 	// Right look cross.
-	rc2 := r.Config.WindowWidth - margin - bw
-	rc1 := r.Config.WindowWidth - margin - 2*bw - gap
-	rc0 := r.Config.WindowWidth - margin - 3*bw - 2*gap
+	rc2 := r.config.WindowWidth - margin - bw
+	rc1 := r.config.WindowWidth - margin - 2*bw - gap
+	rc0 := r.config.WindowWidth - margin - 3*bw - 2*gap
 
 	return []holdButton{
 		{label: "Fwd", x: lc1, y: row0, w: bw, h: bh, action: r.moveForward},

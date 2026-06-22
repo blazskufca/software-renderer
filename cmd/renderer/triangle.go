@@ -147,7 +147,7 @@ func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f
 }
 
 func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.Vec4[T]) {
-	if x < 0 || x >= r.Config.WindowWidth || y < 0 || y >= r.Config.WindowHeight {
+	if x < 0 || x >= r.config.WindowWidth || y < 0 || y >= r.config.WindowHeight {
 		return
 	}
 	p := vector.Vec2[T]{T(x), T(y)}
@@ -160,10 +160,10 @@ func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.V
 	interpolatedReciprocalW := (1/a.W)*alpha + (1/b.W)*beta + (1/c.W)*gamma
 	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-	if interpolatedReciprocalW < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+	if interpolatedReciprocalW < r.zBuffer[(r.config.WindowWidth*y)+x] {
 		r.drawPixel(x, y, color)
 		// Update the Z-buffer with 1/w for current pixel
-		r.ZBuffer[(r.Config.WindowWidth*y)+x] = interpolatedReciprocalW
+		r.zBuffer[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
 	}
 
 }
@@ -322,8 +322,8 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 	// Axis aligned bounding box of the triangle, clamped to the screen bounds
 	xMin := max(0, min(ix0, ix1, ix2))
 	yMin := max(0, min(iy0, iy1, iy2))
-	xMax := min(r.Config.WindowWidth-1, max(ix0, ix1, ix2))
-	yMax := min(r.Config.WindowHeight-1, max(iy0, iy1, iy2))
+	xMax := min(r.config.WindowWidth-1, max(ix0, ix1, ix2))
+	yMax := min(r.config.WindowHeight-1, max(iy0, iy1, iy2))
 
 	// Per-column (moving in +X) and per-row (moving in +Y) deltas for each edge
 	// function. These are constant, which is what lets us step instead of recompute.
@@ -374,10 +374,10 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 				interpolatedReciprocalW := (1/float64(pointA.W))*alpha + (1/float64(pointB.W))*beta + (1/float64(pointC.W))*gamma
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-				if T(interpolatedReciprocalW) < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+				if T(interpolatedReciprocalW) < r.zBuffer[(r.config.WindowWidth*y)+x] {
 					r.drawPixel(x, y, color)
 					// Update the Z-buffer with 1/w for current pixel
-					r.ZBuffer[(r.Config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
+					r.zBuffer[(r.config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}
 			}
 			// Step the edge functions one column to the right
@@ -427,8 +427,8 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 	// Axis aligned bounding box of the triangle, clamped to the screen bounds
 	xMin := max(0, min(ix0, ix1, ix2))
 	yMin := max(0, min(iy0, iy1, iy2))
-	xMax := min(r.Config.WindowWidth-1, max(ix0, ix1, ix2))
-	yMax := min(r.Config.WindowHeight-1, max(iy0, iy1, iy2))
+	xMax := min(r.config.WindowWidth-1, max(ix0, ix1, ix2))
+	yMax := min(r.config.WindowHeight-1, max(iy0, iy1, iy2))
 
 	// Constant per-column and per-row deltas for the incremental edge functions
 	deltaW0Col := bVec2.Y - cVec2.Y
@@ -488,10 +488,10 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 				// Pixels closer to the viewer need to be bigger than the ones further away
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
-				if T(interpolatedReciprocalW) < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+				if T(interpolatedReciprocalW) < r.zBuffer[(r.config.WindowWidth*y)+x] {
 					r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
 					// Update the Z-buffer with 1/w for current pixel
-					r.ZBuffer[(r.Config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
+					r.zBuffer[(r.config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}
 			}
 			// Step the edge functions one column to the right

@@ -44,8 +44,8 @@ var renderModeButtonDefs = []struct {
 }
 
 func (r *Renderer[T]) uiScale() float64 {
-	sx := float64(r.Config.WindowWidth) / 1280.0
-	sy := float64(r.Config.WindowHeight) / 720.0
+	sx := float64(r.config.WindowWidth) / 1280.0
+	sy := float64(r.config.WindowHeight) / 720.0
 	if sx < sy {
 		return sx
 	}
@@ -173,7 +173,7 @@ func (r *Renderer[T]) drawRenderModeToolbar(screen *ebiten.Image) {
 	buttons := r.uiButtons()
 	barH := r.renderModeToolbarHeight()
 
-	vector.FillRect(screen, 0, 0, float32(r.Config.WindowWidth), float32(barH), color.RGBA{0, 0, 0, 170}, false)
+	vector.FillRect(screen, 0, 0, float32(r.config.WindowWidth), float32(barH), color.RGBA{0, 0, 0, 170}, false)
 
 	padX := r.textPadX()
 	textOffsetY := r.textPadY()

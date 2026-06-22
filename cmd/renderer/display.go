@@ -10,22 +10,22 @@ import (
 // initializeWindow configures the ebiten window and its render resolution.
 func (r *Renderer[T]) initializeWindow() {
 	ebiten.SetWindowTitle("3D renderer")
-	ebiten.SetWindowSize(r.Config.WindowWidth, r.Config.WindowHeight)
+	ebiten.SetWindowSize(r.config.WindowWidth, r.config.WindowHeight)
 }
 
 // Pixels are stored as four bytes in R,G,B,A order (matching ebiten's
 // WritePixels). Our colors are packed 0xAABBGGRR, so a little-endian write lays
 // the bytes down as R,G,B,A.
 func (r *Renderer[T]) clearColorBuffer(newColor uint32) {
-	for i := 0; i < len(r.ColorBuffer); i += 4 {
-		binary.LittleEndian.PutUint32(r.ColorBuffer[i:], newColor)
+	for i := 0; i < len(r.colorBuffer); i += 4 {
+		binary.LittleEndian.PutUint32(r.colorBuffer[i:], newColor)
 	}
 }
 
 func (r *Renderer[T]) clearZBuffer(newZ T) {
-	for y := 0; y < r.Config.WindowHeight; y++ {
-		for x := 0; x < r.Config.WindowWidth; x++ {
-			r.ZBuffer[(y*r.Config.WindowWidth)+x] = newZ
+	for y := 0; y < r.config.WindowHeight; y++ {
+		for x := 0; x < r.config.WindowWidth; x++ {
+			r.zBuffer[(y*r.config.WindowWidth)+x] = newZ
 
 		}
 	}
@@ -34,12 +34,12 @@ func (r *Renderer[T]) clearZBuffer(newZ T) {
 // renderColorBuffer hands the color buffer straight to ebiten. The buffer is
 // already a flat R,G,B,A byte slice, so there is nothing to convert or copy.
 func (r *Renderer[T]) renderColorBuffer(screen *ebiten.Image) {
-	screen.WritePixels(r.ColorBuffer)
+	screen.WritePixels(r.colorBuffer)
 }
 
 func (r *Renderer[T]) drawGrid() {
-	for y := 0; y < r.Config.WindowHeight; y++ {
-		for x := 0; x < r.Config.WindowWidth; x++ {
+	for y := 0; y < r.config.WindowHeight; y++ {
+		for x := 0; x < r.config.WindowWidth; x++ {
 			if y%10 == 0 || x%10 == 0 {
 				r.drawPixel(x, y, 0xFF333333)
 			}
@@ -56,9 +56,9 @@ func (r *Renderer[T]) drawRectangle(x, y, w, h int, color uint32) {
 }
 
 func (r *Renderer[T]) drawPixel(x, y int, color uint32) {
-	if x >= 0 && y >= 0 && x < r.Config.WindowWidth && y < r.Config.WindowHeight {
-		idx := ((y * r.Config.WindowWidth) + x) * 4
-		binary.LittleEndian.PutUint32(r.ColorBuffer[idx:], color)
+	if x >= 0 && y >= 0 && x < r.config.WindowWidth && y < r.config.WindowHeight {
+		idx := ((y * r.config.WindowWidth) + x) * 4
+		binary.LittleEndian.PutUint32(r.colorBuffer[idx:], color)
 	}
 }
 

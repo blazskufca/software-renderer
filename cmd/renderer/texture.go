@@ -12,7 +12,7 @@ import (
 )
 
 func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Vec4[T], AUV, BUV, CUV texture.Tex2[T], flatShadePercent T) {
-	if x < 0 || x >= r.Config.WindowWidth || y < 0 || y >= r.Config.WindowHeight {
+	if x < 0 || x >= r.config.WindowWidth || y < 0 || y >= r.config.WindowHeight {
 		return
 	}
 	p := vector.Vec2[T]{X: T(x), Y: T(y)}
@@ -42,10 +42,10 @@ func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Ve
 	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
 	// Only draw pixels if depth value if less than the one previously stored in the Z-buffer
-	if interpolatedReciprocalW < r.ZBuffer[(r.Config.WindowWidth*y)+x] {
+	if interpolatedReciprocalW < r.zBuffer[(r.config.WindowWidth*y)+x] {
 		r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
 		// Update the Z-buffer with 1/w for current pixel
-		r.ZBuffer[(r.Config.WindowWidth*y)+x] = interpolatedReciprocalW
+		r.zBuffer[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
 
 	}
 }
