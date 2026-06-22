@@ -9,6 +9,7 @@ import (
 
 	"github.com/blazskufca/software-renderer/internal/camera"
 	"github.com/blazskufca/software-renderer/internal/clipping"
+	"github.com/blazskufca/software-renderer/internal/config"
 	mesh "github.com/blazskufca/software-renderer/internal/face"
 	"github.com/blazskufca/software-renderer/internal/light"
 	"github.com/blazskufca/software-renderer/internal/matrix"
@@ -22,43 +23,6 @@ import (
 
 // TODO: Move global state into a central structure
 // TODO: Add attribution for models (i.e 3D assets provided by Kenney.nl (CC0 License).)
-
-const (
-	cubeNMeshVertices = 8
-)
-
-type cullMode int
-
-type renderMode int
-
-const (
-	CULL_NONE cullMode = iota
-	CULL_BACKFACE
-)
-
-const (
-	RENDER_WIRE renderMode = iota
-	RENDER_WIRE_VERTEX
-	RENDER_FILL_TRIANGLE
-	RENDER_FILL_TRIANGLE_WIRE
-	RENDER_TEXTURED
-	RENDER_TEXTURED_WIRE
-)
-
-var (
-// previousFrameTime time.Time
-// wasCaptured       bool
-// prevMouseX        int
-// prevMouseY        int
-// trianglesToRender []triangle
-// polygonsRendered  int   // clipped polygons that survived culling this frame
-// renderMethod            = RENDER_WIRE
-// cullMethod              = CULL_BACKFACE
-// projectionMatrix  mat4  = mat4{}
-// globalLight       light = light{direction: vector.vec3{0, 0, 1}}
-// deltaTime         float64
-// meshes            []*mesh
-)
 
 // Game implements ebiten.Game, driving the software renderer through ebiten's
 // Update/Draw loop.
@@ -83,29 +47,59 @@ type Renderer[T utils.Numeric] struct {
 	projectionMatrix  matrix.Mat4[T]
 	meshes            []*mesh.Mesh[T]
 	trianglesToDraw   []triangle[T]
-	renderMethod      renderMode
-	cullMode          cullMode
+	renderMethod      config.RenderMode
+	cullMode          config.CullMode
 	previousFrameTime time.Time
 	deltaTime         float64
 	camera            camera.Camera[T]
 	light             light.Light[T]
 	prevMouseX        int
 	prevMouseY        int
+	textureRasterFunc config.TexturizedRasterizer[T]
+	fillRasterFunc    config.FillRasterizer[T]
+	textureRasterMode config.TextureRasterizer
+	fillRasterMode    config.FillRasterMode
+	labelImages       map[string]*ebiten.Image
+}
+
+// setFillRaster selects the triangle fill rasterizer and records the choice so
+// the UI can reflect which backend is active (func values aren't comparable, so
+// we track the mode enum alongside the func).
+func (r *Renderer[T]) setFillRaster(mode config.FillRasterMode) {
+	r.fillRasterMode = mode
+	switch mode {
+	case config.FILL_PINEDA:
+		r.fillRasterFunc = r.drawFilledTrianglePineda
+	default:
+		r.fillRasterFunc = r.drawFilledTriangle
+	}
+}
+
+// setTextureRaster selects the texture-mapping rasterizer and records the choice
+// so the UI can reflect which backend is active.
+func (r *Renderer[T]) setTextureRaster(mode config.TextureRasterizer) {
+	r.textureRasterMode = mode
+	switch mode {
+	case config.TEXTURE_PINEDA:
+		r.textureRasterFunc = r.drawTexturedTrianglePineda
+	default:
+		r.textureRasterFunc = r.drawTexturedTriangle
+	}
 }
 
 type RendererOpts[T utils.Numeric] func(*Renderer[T])
 
 func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
-	config := Config{
+	c := Config{
 		WindowWidth:             960,
 		WindowHeight:            480,
 		FovY:                    math.Pi / 3,
-		ZNear:                   1.0,
+		ZNear:                   0.1,
 		ZFar:                    100.0,
 		MaximumNumberOfPolygons: 10,
 	}
 
-	renderer := &Renderer[T]{Config: config, camera: camera.Camera[T]{}}
+	renderer := &Renderer[T]{Config: c, camera: camera.Camera[T]{}}
 	for _, opt := range opts {
 		opt(renderer)
 	}
@@ -115,7 +109,9 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{Y: 10}}
 	renderer.camera.Direction = vector.Vec3[T]{Z: 1} // forward, +Z, normalized
 	renderer.camera.Position = vector.Vec3[T]{}      // origin, looking down +Z at the mesh
-	renderer.cullMode = CULL_BACKFACE
+	renderer.cullMode = config.CULL_BACKFACE
+	renderer.setTextureRaster(config.TEXTURE_PINEDA)
+	renderer.setFillRaster(config.FILL_PINEDA)
 	return renderer
 }
 
@@ -161,28 +157,28 @@ func (r *Renderer[T]) Setup() error {
 func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 	for i := 0; i < len(r.trianglesToDraw); i++ {
 		triangle := r.trianglesToDraw[i]
-		if r.renderMethod == RENDER_FILL_TRIANGLE || r.renderMethod == RENDER_FILL_TRIANGLE_WIRE {
-			r.drawFilledTrianglePineda(
+		if r.renderMethod == config.RENDER_FILL_TRIANGLE || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE {
+			r.fillRasterFunc(
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
 				triangle.color)
 		}
 
-		if r.renderMethod == RENDER_TEXTURED || r.renderMethod == RENDER_TEXTURED_WIRE {
-			r.drawTexturedTrianglePineda(
+		if r.renderMethod == config.RENDER_TEXTURED || r.renderMethod == config.RENDER_TEXTURED_WIRE {
+			r.textureRasterFunc(
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].U, triangle.textCoords[0].V,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].U, triangle.textCoords[1].V,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].U, triangle.textCoords[2].V,
 				triangle.flatShadePercent, triangle.texture)
 		}
 
-		if r.renderMethod == RENDER_WIRE || r.renderMethod == RENDER_WIRE_VERTEX || r.renderMethod == RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == RENDER_TEXTURED_WIRE {
+		if r.renderMethod == config.RENDER_WIRE || r.renderMethod == config.RENDER_WIRE_VERTEX || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == config.RENDER_TEXTURED_WIRE {
 			r.drawTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
 				int(triangle.points[1].X), int(triangle.points[1].Y),
 				int(triangle.points[2].X), int(triangle.points[2].Y), 0xFFFFFFFF)
 		}
-		if r.renderMethod == RENDER_WIRE_VERTEX {
+		if r.renderMethod == config.RENDER_WIRE_VERTEX {
 			r.drawRectangle(int(triangle.points[0].X)-3, int(triangle.points[0].Y)-3, 6, 6, 0xFFFFFF00)
 			r.drawRectangle(int(triangle.points[1].X)-3, int(triangle.points[1].Y)-3, 6, 6, 0xFFFFFF00)
 			r.drawRectangle(int(triangle.points[2].X)-3, int(triangle.points[2].Y)-3, 6, 6, 0xFFFFFF00)
@@ -297,7 +293,7 @@ func (r *Renderer[T]) update() {
 			faceNormal := BAVector.Cross(CAVector)
 			faceNormal.Normalize()
 
-			if r.cullMode == CULL_BACKFACE {
+			if r.cullMode == config.CULL_BACKFACE {
 				// Backface culling
 				origin := vector.Vec3[T]{} // Camera position can change so we need a real 0, 0, 0
 				cameraRayVec := origin.Sub(vectorA)
@@ -392,28 +388,40 @@ func (r *Renderer[T]) processInput() (quit bool) {
 
 	// Render / cull mode toggles (one-shot on key press)
 	if inpututil.IsKeyJustPressed(ebiten.Key1) {
-		r.renderMethod = RENDER_WIRE_VERTEX
+		r.renderMethod = config.RENDER_WIRE_VERTEX
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key2) {
-		r.renderMethod = RENDER_WIRE
+		r.renderMethod = config.RENDER_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key3) {
-		r.renderMethod = RENDER_FILL_TRIANGLE
+		r.renderMethod = config.RENDER_FILL_TRIANGLE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key4) {
-		r.renderMethod = RENDER_FILL_TRIANGLE_WIRE
+		r.renderMethod = config.RENDER_FILL_TRIANGLE_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key5) {
-		r.renderMethod = RENDER_TEXTURED
+		r.renderMethod = config.RENDER_TEXTURED
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key6) {
-		r.renderMethod = RENDER_TEXTURED_WIRE
+		r.renderMethod = config.RENDER_TEXTURED_WIRE
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key7) {
+		r.setFillRaster(config.FILL_SCANLINE)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key8) {
+		r.setFillRaster(config.FILL_PINEDA)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.Key9) {
+		r.setTextureRaster(config.TEXTURE_SCANLINE)
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyDigit0) {
+		r.setTextureRaster(config.TEXTURE_PINEDA)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
-		r.cullMode = CULL_BACKFACE
+		r.cullMode = config.CULL_BACKFACE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyX) {
-		r.cullMode = CULL_NONE
+		r.cullMode = config.CULL_NONE
 
 	}
 
