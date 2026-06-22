@@ -1,5 +1,7 @@
 # Software Renderer
 
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-blazskufca.com-blue)](https://blazskufca.com/projects/software_renderer/)
+
 A 3D software renderer written in Go from scratch. Every pixel is computed on the
 CPU into a flat color buffer; no GPU rasterization is used. [Ebiten](https://ebiten.org/)
 is used only to open a window, blit the finished color buffer to the screen, and
