@@ -4,15 +4,15 @@ GOROOT := $(shell go env GOROOT)
 
 # Run the native (desktop) build.
 run:
-	go run ./src
+	go run ./cmd/renderer
 
 # Build the native binary.
 build:
-	go build -o renderer ./src
+	go build -o renderer ./cmd/renderer
 
 # Build the WebAssembly bundle into web/ (game.wasm + wasm_exec.js.old).
 web:
-	GOOS=js GOARCH=wasm go build -o web/game.wasm ./src
+	GOOS=js GOARCH=wasm go build -o web/game.wasm ./cmd/renderer
 	cp "$(GOROOT)/lib/wasm/wasm_exec.js" web/
 	@echo "Built web/game.wasm ($$(du -h web/game.wasm | cut -f1))"
 
