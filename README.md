@@ -8,6 +8,7 @@ compiles to WebAssembly and runs in the browser.
 
 This project follows the [Pikuma "3D Computer Graphics Programming" course](https://pikuma.com/courses/learn-3d-computer-graphics-programming),
 reimplemented in idiomatic, generic Go rather than the course's C.
+<img width="960" height="480" alt="screenrecording-2026-06-22_08-57-48" src="https://github.com/user-attachments/assets/3b34886f-862d-4558-8790-43554e2d6f32" />
 
 ## Features
 
