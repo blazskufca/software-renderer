@@ -105,13 +105,16 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.Config.AspectRatioY = float64(renderer.Config.WindowHeight) / float64(renderer.Config.WindowWidth)
 	renderer.Config.AspectRatioX = float64(renderer.Config.WindowWidth) / float64(renderer.Config.WindowHeight)
 	renderer.Config.FovX = 2 * (math.Atan(math.Tan(renderer.Config.FovY/2) * renderer.Config.AspectRatioX))
-	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{Y: 10}}
-	renderer.camera.Direction = vector.Vec3[T]{Z: 1} // forward, +Z, normalized
-	renderer.camera.Position = vector.Vec3[T]{}      // origin, looking down +Z at the mesh
 	renderer.cullMode = config.CULL_BACKFACE
 	renderer.setTextureRaster(config.TEXTURE_PINEDA)
 	renderer.setFillRaster(config.FILL_PINEDA)
 	renderer.renderMethod = config.RENDER_TEXTURED
+	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{X: -1, Y: -1, Z: 1}}
+	renderer.light.Direction.Normalize()
+	camX, camY, camZ := -3.0, 1.5, 1.5
+	renderer.camera.Position = vector.Vec3[T]{X: T(camX), Y: T(camY), Z: T(camZ)}
+	renderer.camera.YawAngle = 0.71
+	renderer.camera.PitchAngle = 0.31
 	return renderer
 }
 
