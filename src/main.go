@@ -59,7 +59,6 @@ type Renderer[T utils.Numeric] struct {
 	fillRasterFunc    config.FillRasterizer[T]
 	textureRasterMode config.TextureRasterizer
 	fillRasterMode    config.FillRasterMode
-	labelImages       map[string]*ebiten.Image
 }
 
 // setFillRaster selects the triangle fill rasterizer and records the choice so
@@ -112,6 +111,7 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.cullMode = config.CULL_BACKFACE
 	renderer.setTextureRaster(config.TEXTURE_PINEDA)
 	renderer.setFillRaster(config.FILL_PINEDA)
+	renderer.renderMethod = config.RENDER_TEXTURED
 	return renderer
 }
 
@@ -187,6 +187,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 	}
 	r.renderColorBuffer(screen)
 	r.drawRenderModeToolbar(screen)
+	r.drawMovementButtons(screen)
 	// Overlay the FPS counter on top of the rendered frame
 	ebitenutil.DebugPrintAt(screen, fmt.Sprintf(
 		"FPS: %.1f, TPS: %.1f\nTriangles: %d",
@@ -355,13 +356,71 @@ func (r *Renderer[T]) update() {
 
 }
 
+// Camera movement primitives. These are shared by the keyboard handlers and the
+// on-screen navigation buttons so both paths behave identically. Each applies one
+// frame of motion scaled by deltaTime.
+func (r *Renderer[T]) moveForward() {
+	r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+	r.camera.Position = r.camera.Position.Add(r.camera.ForwardVelocity)
+}
+
+func (r *Renderer[T]) moveBackward() {
+	r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+	r.camera.Position = r.camera.Position.Sub(r.camera.ForwardVelocity)
+}
+
+func (r *Renderer[T]) strafeLeft() {
+	right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction) // right = up × forward (left-handed)
+	right.Normalize()
+	r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
+	r.camera.Position = r.camera.Position.Sub(r.camera.RightVelocity)
+}
+
+func (r *Renderer[T]) strafeRight() {
+	right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction)
+	right.Normalize()
+	r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
+	r.camera.Position = r.camera.Position.Add(r.camera.RightVelocity)
+}
+
+func (r *Renderer[T]) moveUp()   { r.camera.Position.Y += 3 * T(r.deltaTime) }
+func (r *Renderer[T]) moveDown() { r.camera.Position.Y -= 3 * T(r.deltaTime) }
+
+func (r *Renderer[T]) lookLeft()  { r.camera.YawAngle -= float32(1.5 * r.deltaTime) }
+func (r *Renderer[T]) lookRight() { r.camera.YawAngle += float32(1.5 * r.deltaTime) }
+func (r *Renderer[T]) lookUp()    { r.camera.PitchAngle += float32(1.5 * r.deltaTime); r.clampPitch() }
+func (r *Renderer[T]) lookDown()  { r.camera.PitchAngle -= float32(1.5 * r.deltaTime); r.clampPitch() }
+
+func (r *Renderer[T]) clampPitch() {
+	if r.camera.PitchAngle > 1.55 {
+		r.camera.PitchAngle = 1.55
+	}
+	if r.camera.PitchAngle < -1.55 {
+		r.camera.PitchAngle = -1.55
+	}
+}
+
 // processInput handles per-frame keyboard and mouse input. It returns true when
 // the user has requested to quit.
 func (r *Renderer[T]) processInput() (quit bool) {
+	// On-screen navigation buttons (held via touch or mouse) run every frame.
+	r.applyMovementButtons()
+
+	// Touch taps on the toolbar (mobile has no mouse), handled like a click.
+	for _, id := range inpututil.AppendJustPressedTouchIDs(nil) {
+		x, y := ebiten.TouchPosition(id)
+		r.handleRenderModeButtonClick(x, y)
+	}
+
 	// UI clicks are handled before pointer capture so the toolbar remains usable.
 	if inpututil.IsMouseButtonJustPressed(ebiten.MouseButtonLeft) {
 		mouseX, mouseY := ebiten.CursorPosition()
 		if r.handleRenderModeButtonClick(mouseX, mouseY) {
+			return false
+		}
+		// Don't capture the cursor for mouse-look when the click lands on a
+		// navigation button — the user is driving the camera with the buttons.
+		if r.pointInMovementButtons(mouseX, mouseY) {
 			return false
 		}
 
@@ -427,30 +486,22 @@ func (r *Renderer[T]) processInput() (quit bool) {
 
 	// Camera movement (continuous while held)
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		r.camera.Position.Y += 3 * T(r.deltaTime)
+		r.moveUp()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyDown) {
-		r.camera.Position.Y -= 3 * T(r.deltaTime)
+		r.moveDown()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyA) {
-		right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction) // right = up × forward (left-handed)
-		right.Normalize()
-		r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
-		r.camera.Position = r.camera.Position.Sub(r.camera.RightVelocity)
+		r.strafeLeft()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
-		right := vector.Vec3[T]{Y: 1}.Cross(r.camera.Direction)
-		right.Normalize()
-		r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
-		r.camera.Position = r.camera.Position.Add(r.camera.RightVelocity)
+		r.strafeRight()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyW) {
-		r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
-		r.camera.Position = r.camera.Position.Add(r.camera.ForwardVelocity)
+		r.moveForward()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyS) {
-		r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
-		r.camera.Position = r.camera.Position.Sub(r.camera.ForwardVelocity)
+		r.moveBackward()
 	}
 
 	// Relative mouse look (only while captured, so the reported position
