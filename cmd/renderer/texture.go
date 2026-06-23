@@ -11,7 +11,7 @@ import (
 	"github.com/blazskufca/software-renderer/internal/vector"
 )
 
-func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Vec4[T], AUV, BUV, CUV texture.Tex2[T], flatShadePercent T) {
+func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Vec4[T], AUV, BUV, CUV texture.Tex2[T], i0, i1, i2 T) {
 	if x < 0 || x >= r.config.WindowWidth || y < 0 || y >= r.config.WindowHeight {
 		return
 	}
@@ -43,7 +43,10 @@ func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Ve
 
 	// Only draw pixels if depth value if less than the one previously stored in the Z-buffer
 	if interpolatedReciprocalW < r.zBuffer[(r.config.WindowWidth*y)+x] {
-		r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
+		// Interpolate the per-vertex light intensity across the face (Gouraud);
+		// flat shading passes equal vertex values so this is a constant.
+		intensity := i0*alpha + i1*beta + i2*gamma
+		r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(intensity)))
 		// Update the Z-buffer with 1/w for current pixel
 		r.zBuffer[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
 

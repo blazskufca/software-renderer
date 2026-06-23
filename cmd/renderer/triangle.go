@@ -12,12 +12,16 @@ import (
 
 // triangle stores actual vec2 points of the triangle projected onto the screen
 type triangle[T utils.Numeric] struct {
-	points           [3]vector.Vec4[T]
-	textCoords       [3]texture.Tex2[T]
-	color            uint32
-	avgDepth         T
-	flatShadePercent T
-	texture          *mesh.TextureData
+	points     [3]vector.Vec4[T]
+	textCoords [3]texture.Tex2[T]
+	color      uint32
+	avgDepth   T
+	// lightIntensity is the light intensity at each of the three vertices. For
+	// flat shading all three are equal (the face-normal intensity); for Gouraud
+	// shading each holds its vertex's own intensity and the rasterizer
+	// interpolates between them.
+	lightIntensity [3]T
+	texture        *mesh.TextureData
 }
 
 //	func drawFilledTriangle(x0, y0, x1, y1, x2, y2 int, color uint32) {
@@ -75,7 +79,7 @@ type triangle[T utils.Numeric] struct {
 //	}
 //}
 
-func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 T, color uint32) {
+func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f, y2f, z2, w2 T, color uint32, i0, i1, i2 T) {
 	// Snap screen coords to integers, like the C reference (keep z/w as float for depth)
 	x0, y0 := int(x0f), int(y0f)
 	x1, y1 := int(x1f), int(y1f)
@@ -86,18 +90,21 @@ func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f
 		utils.SwapNumericPtr(&y0, &y1)
 		utils.SwapNumericPtr(&z0, &z1)
 		utils.SwapNumericPtr(&w0, &w1)
+		utils.SwapNumericPtr(&i0, &i1)
 	}
 	if y1 > y2 {
 		utils.SwapNumericPtr(&x1, &x2)
 		utils.SwapNumericPtr(&y1, &y2)
 		utils.SwapNumericPtr(&z1, &z2)
 		utils.SwapNumericPtr(&w1, &w2)
+		utils.SwapNumericPtr(&i1, &i2)
 	}
 	if y0 > y1 {
 		utils.SwapNumericPtr(&x0, &x1)
 		utils.SwapNumericPtr(&y0, &y1)
 		utils.SwapNumericPtr(&z0, &z1)
 		utils.SwapNumericPtr(&w0, &w1)
+		utils.SwapNumericPtr(&i0, &i1)
 	}
 
 	pointA := vector.Vec4[T]{T(x0), T(y0), T(z0), T(w0)}
@@ -120,7 +127,7 @@ func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f
 				utils.SwapNumericPtr(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				r.drawTrianglePixel(x, y, color, pointA, pointB, pointC)
+				r.drawTrianglePixel(x, y, color, pointA, pointB, pointC, i0, i1, i2)
 			}
 		}
 	}
@@ -140,13 +147,13 @@ func (r *Renderer[T]) drawFilledTriangle(x0f, y0f, z0, w0, x1f, y1f, z1, w1, x2f
 				utils.SwapNumericPtr(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				r.drawTrianglePixel(x, y, color, pointA, pointB, pointC)
+				r.drawTrianglePixel(x, y, color, pointA, pointB, pointC, i0, i1, i2)
 			}
 		}
 	}
 }
 
-func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.Vec4[T]) {
+func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.Vec4[T], i0, i1, i2 T) {
 	if x < 0 || x >= r.config.WindowWidth || y < 0 || y >= r.config.WindowHeight {
 		return
 	}
@@ -161,14 +168,17 @@ func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.V
 	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
 	if interpolatedReciprocalW < r.zBuffer[(r.config.WindowWidth*y)+x] {
-		r.drawPixel(x, y, color)
+		// Interpolate the per-vertex light intensity across the face (Gouraud);
+		// for flat shading all three are equal so this is a constant.
+		intensity := i0*alpha + i1*beta + i2*gamma
+		r.drawPixel(x, y, light.LightApplyIntensity(color, float32(intensity)))
 		// Update the Z-buffer with 1/w for current pixel
 		r.zBuffer[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
 	}
 
 }
 
-func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, flatShadePercent T, t *mesh.TextureData) {
+func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, i0, i1, i2 T, t *mesh.TextureData) {
 	ix0, iy0 := int(x0), int(y0)
 	ix1, iy1 := int(x1), int(y1)
 	ix2, iy2 := int(x2), int(y2)
@@ -182,6 +192,7 @@ func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w
 		utils.SwapNumericPtr(&v0, &v1)
 		utils.SwapNumericPtr(&z0, &z1)
 		utils.SwapNumericPtr(&w0, &w1)
+		utils.SwapNumericPtr(&i0, &i1)
 
 	}
 	if iy1 > iy2 {
@@ -191,6 +202,7 @@ func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w
 		utils.SwapNumericPtr(&v1, &v2)
 		utils.SwapNumericPtr(&z1, &z2)
 		utils.SwapNumericPtr(&w1, &w2)
+		utils.SwapNumericPtr(&i1, &i2)
 	}
 	if iy0 > iy1 {
 		utils.SwapNumericPtr(&iy0, &iy1)
@@ -199,6 +211,7 @@ func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w
 		utils.SwapNumericPtr(&v0, &v1)
 		utils.SwapNumericPtr(&z0, &z1)
 		utils.SwapNumericPtr(&w0, &w1)
+		utils.SwapNumericPtr(&i0, &i1)
 
 	}
 
@@ -238,7 +251,7 @@ func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w
 				utils.SwapNumericPtr(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				r.drawTexel(x, y, t, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
+				r.drawTexel(x, y, t, pointA, pointB, pointC, AUV, BUV, CUV, i0, i1, i2)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
@@ -261,7 +274,7 @@ func (r *Renderer[T]) drawTexturedTriangle(x0, y0, z0, w0, u0, v0, x1, y1, z1, w
 				utils.SwapNumericPtr(&xStart, &xEnd)
 			}
 			for x := xStart; x < xEnd; x++ {
-				r.drawTexel(x, y, t, pointA, pointB, pointC, AUV, BUV, CUV, flatShadePercent)
+				r.drawTexel(x, y, t, pointA, pointB, pointC, AUV, BUV, CUV, i0, i1, i2)
 				//drawPixel(x, y, 0xFFFF00FF)
 			}
 
@@ -300,7 +313,7 @@ func isTopLeft[T utils.Numeric](start, end vector.Vec2[T]) bool {
 // the inner loop. A top-left fill rule biases the edges so shared edges between
 // adjacent triangles are drawn exactly once.
 // Signature matches drawFilledTriangle so it can be swapped in directly.
-func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, w1f, x2f, y2f, z2, w2f T, color uint32) {
+func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, w1f, x2f, y2f, z2, w2f T, color uint32, i0, i1, i2 T) {
 	ix0, iy0 := int(x0f), int(y0f)
 	ix1, iy1 := int(x1f), int(y1f)
 	ix2, iy2 := int(x2f), int(y2f)
@@ -375,7 +388,10 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
 				if T(interpolatedReciprocalW) < r.zBuffer[(r.config.WindowWidth*y)+x] {
-					r.drawPixel(x, y, color)
+					// Interpolate the per-vertex light intensity (Gouraud); equal
+					// vertex values collapse to a constant for flat shading.
+					intensity := float64(i0)*alpha + float64(i1)*beta + float64(i2)*gamma
+					r.drawPixel(x, y, light.LightApplyIntensity(color, float32(intensity)))
 					// Update the Z-buffer with 1/w for current pixel
 					r.zBuffer[(r.config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}
@@ -397,7 +413,7 @@ func (r *Renderer[T]) drawFilledTrianglePineda(x0f, y0f, z0, w0f, x1f, y1f, z1, 
 // rasterization with the top-left fill rule, but for every inside pixel it
 // perspective-correct samples the texture. Signature matches drawTexturedTriangle
 // so it can be swapped in directly.
-func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1, z1, w1f, u1, v1, x2, y2, z2, w2f, u2, v2, flatShadePercent T, t *mesh.TextureData) {
+func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1, z1, w1f, u1, v1, x2, y2, z2, w2f, u2, v2, i0, i1, i2 T, t *mesh.TextureData) {
 	// Flip the V to account for inverted UV coordinates, V0 is top left for us
 	v0 = 1 - v0
 	v1 = 1 - v1
@@ -489,7 +505,10 @@ func (r *Renderer[T]) drawTexturedTrianglePineda(x0, y0, z0, w0f, u0, v0, x1, y1
 				interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
 				if T(interpolatedReciprocalW) < r.zBuffer[(r.config.WindowWidth*y)+x] {
-					r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(flatShadePercent)))
+					// Gouraud: interpolate the per-vertex light intensity across the
+					// face (affine, in screen space). Flat shading feeds equal values.
+					intensity := float64(i0)*alpha + float64(i1)*beta + float64(i2)*gamma
+					r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(intensity)))
 					// Update the Z-buffer with 1/w for current pixel
 					r.zBuffer[(r.config.WindowWidth*y)+x] = T(interpolatedReciprocalW)
 				}

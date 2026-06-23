@@ -152,11 +152,36 @@ func (r *Renderer[T]) uiButtons() []uiButton {
 		x += w + gap
 	}
 
+	// Row 3: shading mode
+	x = margin
+	y = margin + (buttonH+rowGap)*2
+	row3 := []uiButton{
+		{
+			label:  "F Flat",
+			active: r.shadingMode == config.SHADING_FLAT,
+			action: func() { r.shadingMode = config.SHADING_FLAT },
+		},
+		{
+			label:  "G Gouraud",
+			active: r.shadingMode == config.SHADING_GOURAUD,
+			action: func() { r.shadingMode = config.SHADING_GOURAUD },
+		},
+	}
+	for i := range row3 {
+		w := r.buttonWidth(row3[i].label)
+		row3[i].x = x
+		row3[i].y = y
+		row3[i].w = w
+		row3[i].h = buttonH
+		buttons = append(buttons, row3[i])
+		x += w + gap
+	}
+
 	return buttons
 }
 
 func (r *Renderer[T]) renderModeToolbarHeight() int {
-	return r.scaledPixels(10) + r.buttonHeight()*2 + r.scaledPixels(8) + r.scaledPixels(10)
+	return r.scaledPixels(10) + r.buttonHeight()*3 + r.scaledPixels(8)*2 + r.scaledPixels(10)
 }
 
 func (r *Renderer[T]) handleRenderModeButtonClick(x, y int) bool {

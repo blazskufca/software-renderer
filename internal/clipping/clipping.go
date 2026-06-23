@@ -74,18 +74,22 @@ func InitFrustumPlanes[T utils.Numeric, U utils.Numeric, K utils.Numeric](frustu
 type Polygon[T utils.Numeric] struct {
 	Vertices         [maxPolygonVertices]vector.Vec3[T]
 	TexCoords        [maxPolygonVertices]texture.Tex2[T]
+	LightIntensities [maxPolygonVertices]T
 	NumberOfVertices int
 }
 
-// NewPolyFromTriangle constructs a new Polygon[T] from given triangles vertices and UV coordinates
-func NewPolyFromTriangle[T utils.Numeric](vertices *[3]vector.Vec4[T], UVs ...texture.Tex2[T]) Polygon[T] {
+// NewPolyFromTriangle constructs a new Polygon[T] from a triangle's vertices, UV coordinates and per-vertex light intensities.
+func NewPolyFromTriangle[T utils.Numeric](vertices *[3]vector.Vec4[T], uvs *[3]texture.Tex2[T], intensities *[3]T) Polygon[T] {
 	p := Polygon[T]{}
 	for i, vert := range vertices {
 		p.Vertices[i] = vert.ToVec3()
 		p.NumberOfVertices++
 	}
-	for i, u := range UVs {
+	for i, u := range uvs {
 		p.TexCoords[i] = u
+	}
+	for i, in := range intensities {
+		p.LightIntensities[i] = in
 	}
 	return p
 }
@@ -111,10 +115,12 @@ func (p *Polygon[T]) clipPolygonAgainstPlane(frustumPlanes *[6]Plane[T], plane i
 
 	var insideVertices = [maxPolygonVertices]vector.Vec3[T]{}
 	var insideTextureCoordinates = [maxPolygonVertices]texture.Tex2[T]{}
+	var insideLightIntensities = [maxPolygonVertices]T{}
 	var numInsideVertices int
 
 	previousVertex := p.Vertices[p.NumberOfVertices-1]
 	previousTextureCoord := p.TexCoords[p.NumberOfVertices-1]
+	previousLightIntensity := p.LightIntensities[p.NumberOfVertices-1]
 
 	PB := previousVertex.Sub(planePoint)
 	previousDot := PB.Dot(planeNormal)
@@ -122,6 +128,7 @@ func (p *Polygon[T]) clipPolygonAgainstPlane(frustumPlanes *[6]Plane[T], plane i
 	for i := 0; i < p.NumberOfVertices; i++ {
 		PA := p.Vertices[i].Sub(planePoint) // PA is a vector between point P on plane and a current vertex
 		currentTextCord := p.TexCoords[i]
+		currentLightIntensity := p.LightIntensities[i]
 		currentDot := PA.Dot(planeNormal) // Current dot product tells us if a vertex is inside, outside or on the plane
 
 		// Product is only negative if there is a change in sign between the dot products
@@ -148,8 +155,10 @@ func (p *Polygon[T]) clipPolygonAgainstPlane(frustumPlanes *[6]Plane[T], plane i
 				U: utils.Lerp[T, T](previousTextureCoord.U, currentTextCord.U, factorT),
 				V: utils.Lerp[T, T](previousTextureCoord.V, currentTextCord.V, factorT),
 			}
+			interpolatedLightIntensity := utils.Lerp[T, T](previousLightIntensity, currentLightIntensity, factorT)
 			insideVertices[numInsideVertices] = intersectionPoint
 			insideTextureCoordinates[numInsideVertices] = interpolatedTextCord
+			insideLightIntensities[numInsideVertices] = interpolatedLightIntensity
 			numInsideVertices++
 		}
 
@@ -157,14 +166,17 @@ func (p *Polygon[T]) clipPolygonAgainstPlane(frustumPlanes *[6]Plane[T], plane i
 		if currentDot > 0 {
 			insideVertices[numInsideVertices] = p.Vertices[i]
 			insideTextureCoordinates[numInsideVertices] = currentTextCord
+			insideLightIntensities[numInsideVertices] = currentLightIntensity
 			numInsideVertices++
 		}
 		// Move along the polygon so a current vertex and dot become previous vertex and dot product
 		previousDot = currentDot
 		previousVertex = p.Vertices[i]
 		previousTextureCoord = currentTextCord
+		previousLightIntensity = currentLightIntensity
 	}
 	p.Vertices = insideVertices
 	p.NumberOfVertices = numInsideVertices
 	p.TexCoords = insideTextureCoordinates
+	p.LightIntensities = insideLightIntensities
 }

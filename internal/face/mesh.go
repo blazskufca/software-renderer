@@ -19,13 +19,16 @@ const (
 
 // Face stores vertex indexes which form that specific face
 type Face[U utils.Numeric] struct {
-	A     int
-	B     int
-	C     int
-	AUV   texture.Tex2[U]
-	BUV   texture.Tex2[U]
-	CUV   texture.Tex2[U]
-	Color uint32
+	A       int
+	B       int
+	C       int
+	AUV     texture.Tex2[U]
+	BUV     texture.Tex2[U]
+	CUV     texture.Tex2[U]
+	ANormal vector.Vec3[U] // Per-vertex normals, used for Gouraud shading
+	BNormal vector.Vec3[U]
+	CNormal vector.Vec3[U]
+	Color   uint32
 }
 
 var (
@@ -92,6 +95,10 @@ func (m *Mesh[T]) MirrorHorizontally() {
 	for i := range m.Faces {
 		m.Faces[i].B, m.Faces[i].C = m.Faces[i].C, m.Faces[i].B
 		m.Faces[i].BUV, m.Faces[i].CUV = m.Faces[i].CUV, m.Faces[i].BUV
+		m.Faces[i].BNormal, m.Faces[i].CNormal = m.Faces[i].CNormal, m.Faces[i].BNormal
+		m.Faces[i].ANormal.X = -m.Faces[i].ANormal.X
+		m.Faces[i].BNormal.X = -m.Faces[i].BNormal.X
+		m.Faces[i].CNormal.X = -m.Faces[i].CNormal.X
 	}
 }
 
@@ -117,6 +124,7 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 	var v []vector.Vec3[T]
 	var fa []Face[T]
 	var vt []texture.Tex2[T]
+	var vn []vector.Vec3[T]
 
 	f, err := assets.OpenAsset(path)
 	if err != nil {
@@ -164,6 +172,8 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 			n := len(fields) - 1
 			vIdx := make([]int, n)
 			vtIdx := make([]int, n)
+			vnIdx := make([]int, n)
+			hasNormals := true
 			for i := 0; i < n; i++ {
 				parts := strings.Split(fields[i+1], "/")
 				if len(parts) < 2 {
@@ -179,13 +189,32 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 				}
 				vIdx[i] = vi - 1
 				vtIdx[i] = vti - 1
+				if len(parts) >= 3 && parts[2] != "" {
+					vni, err := strconv.Atoi(parts[2])
+					if err != nil {
+						return Mesh[T]{}, err
+					}
+					vnIdx[i] = vni - 1
+				} else {
+					hasNormals = false
+				}
 			}
 			for i := 1; i < n-1; i++ {
-				fa = append(fa, Face[T]{
-					vIdx[0], vIdx[i], vIdx[i+1],
-					vt[vtIdx[0]], vt[vtIdx[i]], vt[vtIdx[i+1]],
-					0xFFFFFFFF,
-				})
+				f := Face[T]{
+					A:     vIdx[0],
+					B:     vIdx[i],
+					C:     vIdx[i+1],
+					AUV:   vt[vtIdx[0]],
+					BUV:   vt[vtIdx[i]],
+					CUV:   vt[vtIdx[i+1]],
+					Color: 0xFFFFFFFF,
+				}
+				if hasNormals {
+					f.ANormal = vn[vnIdx[0]]
+					f.BNormal = vn[vnIdx[i]]
+					f.CNormal = vn[vnIdx[i+1]]
+				}
+				fa = append(fa, f)
 			}
 		case "vt":
 			if len(fields[1:]) > 3 {
@@ -200,6 +229,24 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 				return Mesh[T]{}, err
 			}
 			vt = append(vt, texture.Tex2[T]{U: T(parsedU), V: T(parsedV)})
+
+		case "vn":
+			if len(fields) < 4 {
+				return Mesh[T]{}, fmt.Errorf("malformed vertex normal: got %d coordinates", len(fields)-1)
+			}
+			parsedX, err := strconv.ParseFloat(fields[1], 64)
+			if err != nil {
+				return Mesh[T]{}, err
+			}
+			parsedY, err := strconv.ParseFloat(fields[2], 64)
+			if err != nil {
+				return Mesh[T]{}, err
+			}
+			parsedZ, err := strconv.ParseFloat(fields[3], 64)
+			if err != nil {
+				return Mesh[T]{}, err
+			}
+			vn = append(vn, vector.Vec3[T]{X: T(parsedX), Y: T(parsedY), Z: T(parsedZ)})
 
 		default:
 			log.Printf("Not implemented parsing line type %q", fields[0])

@@ -59,6 +59,7 @@ type Renderer[T utils.Numeric] struct {
 	fillRasterFunc    config.FillRasterizer[T]
 	textureRasterMode config.TextureRasterizer
 	fillRasterMode    config.FillRasterMode
+	shadingMode       config.ShadingMode
 }
 
 // setFillRaster selects the triangle fill rasterizer and records the choice so
@@ -109,6 +110,7 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.setTextureRaster(config.TEXTURE_PINEDA)
 	renderer.setFillRaster(config.FILL_PINEDA)
 	renderer.renderMethod = config.RENDER_TEXTURED
+	renderer.shadingMode = config.SHADING_GOURAUD
 	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{X: -1, Y: -1, Z: 1}}
 	renderer.light.Direction.Normalize()
 	camX, camY, camZ := -3.0, 1.5, 1.5
@@ -137,22 +139,28 @@ func (r *Renderer[T]) Setup() error {
 	m := matrix.Mat4MakePerspective[T, T](T(r.config.FovY), T(r.config.AspectRatioY), T(r.config.ZNear), T(r.config.ZFar))
 	r.projectionMatrix = m
 	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.config.FovX), T(r.config.FovY), T(r.config.ZNear), T(r.config.ZFar))
-	currentMesh, err := mesh.NewMeshFromFile[T]("assets/race.obj")
+	currentMesh, err := mesh.NewMeshFromFile[T]("assets/race.obj", func(m *mesh.Mesh[T]) error {
+		tw, th, pixels, err := texture.LoadTextureData("assets/colormap.png")
+		if err != nil {
+			return err
+		}
+		m.Texture = mesh.TextureData{PixelData: pixels, Width: tw, Height: th}
+		return nil
+	}, func(m *mesh.Mesh[T]) error {
+		m.Translation = vector.Vec3[T]{Z: 5}
+		return nil
+	}, func(m *mesh.Mesh[T]) error {
+		m.PerFrameMutations = append(m.PerFrameMutations, func(m *mesh.Mesh[T]) error {
+			rot := (math.Pi / 2) * r.deltaTime
+			m.Rotation.Y += T(rot)
+			return nil
+		})
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	// Load the diffuse texture for the mesh. LoadTextureData returns primitives
-	// (it can't import the mesh package), so build the TextureData here.
-	tw, th, pixels, err := texture.LoadTextureData("assets/colormap.png")
-	if err != nil {
-		return err
-	}
-	currentMesh.Texture = mesh.TextureData{PixelData: pixels, Width: tw, Height: th}
-	// Push the mesh in front of the camera (which sits at the origin looking down
-	// +Z) so it lands inside the view frustum (ZNear..ZFar).
-	currentMesh.Translation = vector.Vec3[T]{Z: 5}
 	r.meshes = append(r.meshes, &currentMesh)
-
 	//currentMesh = newCubeMesh()
 	return nil
 }
@@ -165,7 +173,8 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
-				triangle.color)
+				triangle.color,
+				triangle.lightIntensity[0], triangle.lightIntensity[1], triangle.lightIntensity[2])
 		}
 
 		if r.renderMethod == config.RENDER_TEXTURED || r.renderMethod == config.RENDER_TEXTURED_WIRE {
@@ -173,7 +182,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].U, triangle.textCoords[0].V,
 				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].U, triangle.textCoords[1].V,
 				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].U, triangle.textCoords[2].V,
-				triangle.flatShadePercent, triangle.texture)
+				triangle.lightIntensity[0], triangle.lightIntensity[1], triangle.lightIntensity[2], triangle.texture)
 		}
 
 		if r.renderMethod == config.RENDER_WIRE || r.renderMethod == config.RENDER_WIRE_VERTEX || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == config.RENDER_TEXTURED_WIRE {
@@ -297,6 +306,26 @@ func (r *Renderer[T]) update() {
 			faceNormal := BAVector.Cross(CAVector)
 			faceNormal.Normalize()
 
+			flatShadePercent := -faceNormal.Dot(r.light.Direction)
+			faceIntensities := [3]T{flatShadePercent, flatShadePercent, flatShadePercent}
+
+			// Per-vertex light intensities for Gouraud shading.
+			if r.shadingMode == config.SHADING_GOURAUD {
+				vertexNormals := [3]vector.Vec3[T]{meshFace.ANormal, meshFace.BNormal, meshFace.CNormal}
+				var vertexIntensities [3]T
+				for j := 0; j < 3; j++ {
+					n := vertexNormals[j]
+					transformedNormal := worldMatrix.MulVec4(vector.Vec4[T]{X: n.X, Y: n.Y, Z: n.Z}).ToVec3()
+					if transformedNormal.Length() == 0 {
+						transformedNormal = faceNormal
+					} else {
+						transformedNormal.Normalize()
+					}
+					vertexIntensities[j] = -transformedNormal.Dot(r.light.Direction)
+				}
+				faceIntensities = vertexIntensities
+			}
+
 			if r.cullMode == config.CULL_BACKFACE {
 				// Backface culling
 				origin := vector.Vec3[T]{} // Camera position can change so we need a real 0, 0, 0
@@ -311,7 +340,7 @@ func (r *Renderer[T]) update() {
 			}
 
 			// Clipping stage
-			poly := clipping.NewPolyFromTriangle(&transformedVertexArr, meshFace.AUV, meshFace.BUV, meshFace.CUV)
+			poly := clipping.NewPolyFromTriangle(&transformedVertexArr, &[3]texture.Tex2[T]{meshFace.AUV, meshFace.BUV, meshFace.CUV}, &faceIntensities)
 			poly.ClipPolygon(&r.frustumPlanes)
 			// Break the clipped polygon apart into triangles (fan triangulation)
 			var clippedTriangles [10]triangle[T]
@@ -320,6 +349,7 @@ func (r *Renderer[T]) update() {
 				tr := triangle[T]{}
 				tr.points = [3]vector.Vec4[T]{poly.Vertices[0].ToVec4(), poly.Vertices[t+1].ToVec4(), poly.Vertices[t+2].ToVec4()}
 				tr.textCoords = [3]texture.Tex2[T]{poly.TexCoords[0], poly.TexCoords[t+1], poly.TexCoords[t+2]}
+				tr.lightIntensity = [3]T{poly.LightIntensities[0], poly.LightIntensities[t+1], poly.LightIntensities[t+2]}
 				clippedTriangles[t] = tr
 			}
 			for i := 0; i < numberOfClippedTriangles; i++ {
@@ -340,10 +370,8 @@ func (r *Renderer[T]) update() {
 					projectedPoints[j].Y += T(r.config.WindowHeight / 2)
 				}
 				var projectedTriangle triangle[T]
-				// We have to invert the light ray, otehrwise it will be shaded when face is away from camera
-				flatShadePercent := -faceNormal.Dot(r.light.Direction)
-				projectedTriangle.color = light.LightApplyIntensity(meshFace.Color, float32(flatShadePercent))
-				projectedTriangle.flatShadePercent = flatShadePercent
+				projectedTriangle.color = meshFace.Color
+				projectedTriangle.lightIntensity = clippedTriangle.lightIntensity
 				projectedTriangle.points[0] = projectedPoints[0]
 				projectedTriangle.points[1] = projectedPoints[1]
 				projectedTriangle.points[2] = projectedPoints[2]
@@ -486,6 +514,12 @@ func (r *Renderer[T]) processInput() (quit bool) {
 		r.cullMode = config.CULL_NONE
 
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF) {
+		r.shadingMode = config.SHADING_FLAT
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyG) {
+		r.shadingMode = config.SHADING_GOURAUD
+	}
 
 	// Camera movement (continuous while held)
 	if ebiten.IsKeyPressed(ebiten.KeyUp) {
@@ -553,7 +587,19 @@ func (r *Renderer[T]) Update() error {
 }
 
 func main() {
-	r := NewRenderer[float32]()
+	r := NewRenderer[float32](func(r *Renderer[float32]) {
+		isVsynced := ebiten.IsVsyncEnabled()
+		log.Printf("Using vsync: %v", isVsynced)
+		if isVsynced {
+			log.Printf("Trying to disable vsync")
+			ebiten.SetVsyncEnabled(false)
+			ebiten.SetTPS(ebiten.SyncWithFPS)
+			if isVs := ebiten.IsVsyncEnabled(); !isVs {
+				log.Printf("Successfully disabled vsync, TPS synced with Framerate - Both uncapped")
+			}
+		}
+
+	})
 	if err := r.Setup(); err != nil {
 		log.Fatal(err)
 	}
