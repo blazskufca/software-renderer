@@ -1,6 +1,8 @@
-.PHONY: run build web serve clean
+.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu
 
 GOROOT := $(shell go env GOROOT)
+
+PGO_PROFILE := profiling
 
 # Run the native (desktop) build.
 run:
@@ -10,9 +12,34 @@ run:
 build:
 	go build -o renderer ./cmd/renderer
 
+profile:
+	go run ./cmd/renderer -cpuprofile "$(PGO_PROFILE)/cpu.prof"
+	@echo "Wrote $(PGO_PROFILE) — now run 'make build-pgo'"
+
+profile-mem:
+	go run ./cmd/renderer -memprofile "$(PGO_PROFILE)/mem.prof"
+
+view-mem:
+	go tool pprof -http=:6061 "$(PGO_PROFILE)/mem.prof"
+
+view-cpu:
+	go tool pprof -http=:6061 "$(PGO_PROFILE)/cpu.prof"
+
+render-mem:
+	go tool pprof -svg -output "$(PGO_PROFILE)/mem.svg" "$(PGO_PROFILE)/mem.prof"
+	@echo "wrote $(PGO_PROFILE)/mem.svg"
+
+render-cpu:
+	go tool pprof -svg -output "$(PGO_PROFILE)/cpu.svg" "$(PGO_PROFILE)/cpu.prof"
+	@echo "wrote $(PGO_PROFILE)/cpu.svg"
+
+build-pgo:
+	@test -f "$(PGO_PROFILE)/cpu.prof" || { echo "missing "$(PGO_PROFILE)/cpu.prof" — run 'make profile' first"; exit 1; }
+	go build "-pgo=$(PGO_PROFILE)/cpu.prof" -o renderer ./cmd/renderer
+
 # Build the WebAssembly bundle into web/ (game.wasm + wasm_exec.js.old).
 web:
-	GOOS=js GOARCH=wasm go build -o web/game.wasm ./cmd/renderer
+	GOOS=js GOARCH=wasm go build -pgo="$(PGO_PROFILE)/cpu.prof" -o web/game.wasm ./cmd/renderer
 	cp "$(GOROOT)/lib/wasm/wasm_exec.js" web/
 	@echo "Built web/game.wasm ($$(du -h web/game.wasm | cut -f1))"
 
@@ -22,4 +49,4 @@ serve: web
 	cd web && python3 -m http.server 8080
 
 clean:
-	rm -f renderer web/game.wasm
+	rm -f renderer web/game.wasm "$(PGO_PROFILE)/cpu.prof" "$(PGO_PROFILE)/mem.prof"

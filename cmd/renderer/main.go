@@ -1,10 +1,13 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math"
+	"os"
 	"runtime"
+	"runtime/pprof"
 	"time"
 
 	"github.com/blazskufca/software-renderer/internal/camera"
@@ -587,6 +590,22 @@ func (r *Renderer[T]) Update() error {
 }
 
 func main() {
+	cpuProfile := flag.String("cpuprofile", "", "write a CPU profile to `file`")
+	memProfile := flag.String("memprofile", "", "write a memory profile to `file` on exit")
+	flag.Parse()
+
+	if *cpuProfile != "" {
+		f, err := os.Create(*cpuProfile)
+		if err != nil {
+			log.Fatalf("could not create CPU profile: %v", err)
+		}
+		defer f.Close()
+		if err := pprof.StartCPUProfile(f); err != nil {
+			log.Fatalf("could not start CPU profile: %v", err)
+		}
+		defer pprof.StopCPUProfile()
+	}
+
 	r := NewRenderer[float32](func(r *Renderer[float32]) {
 		isVsynced := ebiten.IsVsyncEnabled()
 		log.Printf("Using vsync: %v", isVsynced)
@@ -604,6 +623,19 @@ func main() {
 		log.Fatal(err)
 	}
 	if err := ebiten.RunGame(r); err != nil {
-		log.Fatal(err)
+		// Don't log.Fatal here: os.Exit would skip the deferred profile flushes.
+		log.Printf("game exited: %v", err)
+	}
+
+	if *memProfile != "" {
+		f, err := os.Create(*memProfile)
+		if err != nil {
+			log.Fatalf("could not create memory profile: %v", err)
+		}
+		defer f.Close()
+		runtime.GC()
+		if err := pprof.WriteHeapProfile(f); err != nil {
+			log.Fatalf("could not write memory profile: %v", err)
+		}
 	}
 }
