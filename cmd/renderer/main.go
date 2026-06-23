@@ -271,6 +271,16 @@ func (r *Renderer[T]) update() {
 
 		viewMatrix := matrix.Mat4LookAt(r.camera.Position, target, vector.Vec3[T]{Y: 1})
 
+		// order matters
+		// Scale -> rotate -> translate
+		worldMatrix := matrix.Mat4Identity[T]()
+		worldMatrix = scaleMatrix.MulMat4(worldMatrix)
+		worldMatrix = rotationMatrixZ.MulMat4(worldMatrix)
+		worldMatrix = rotationMatrixY.MulMat4(worldMatrix)
+		worldMatrix = rotationMatrixX.MulMat4(worldMatrix)
+		worldMatrix = translationMatrix.MulMat4(worldMatrix)
+		worldMatrix = viewMatrix.MulMat4(worldMatrix)
+
 		for i := 0; i < len(currentMesh.Faces); i++ {
 			// Face index into the vertices array
 			//if i != 4 {
@@ -282,16 +292,6 @@ func (r *Renderer[T]) update() {
 			facesVertices[0] = currentMesh.Vertices[meshFace.A]
 			facesVertices[1] = currentMesh.Vertices[meshFace.B]
 			facesVertices[2] = currentMesh.Vertices[meshFace.C]
-			// order matters
-			// Scale -> rotate -> translate
-
-			worldMatrix := matrix.Mat4Identity[T]()
-			worldMatrix = scaleMatrix.MulMat4(worldMatrix)
-			worldMatrix = rotationMatrixZ.MulMat4(worldMatrix)
-			worldMatrix = rotationMatrixY.MulMat4(worldMatrix)
-			worldMatrix = rotationMatrixX.MulMat4(worldMatrix)
-			worldMatrix = translationMatrix.MulMat4(worldMatrix)
-			worldMatrix = viewMatrix.MulMat4(worldMatrix)
 			var transformedVertexArr [3]vector.Vec4[T]
 			for j := 0; j < 3; j++ {
 				transformedVertex := facesVertices[j].ToVec4()
