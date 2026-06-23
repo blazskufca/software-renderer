@@ -19,16 +19,18 @@ const (
 )
 
 // uiButton is a single clickable toolbar button. active drives the highlighted
-// state and action is invoked on click. Buttons are rebuilt every frame so both
-// fields can reflect the renderer's current state.
+// state and action is invoked on click. The button list is built once and cached
+// (see getUIButtons); isActive lets the cached list refresh the highlight each
+// frame without reallocating, since only the active state changes at runtime.
 type uiButton struct {
-	label  string
-	x      int
-	y      int
-	w      int
-	h      int
-	active bool
-	action func()
+	label    string
+	x        int
+	y        int
+	w        int
+	h        int
+	active   bool
+	action   func()
+	isActive func() bool
 }
 
 var renderModeButtonDefs = []struct {
@@ -79,9 +81,27 @@ func (r *Renderer[T]) buttonHeight() int {
 	return glyphHeight + 2*r.textPadY()
 }
 
-// uiButtons builds the toolbar: row one selects the render mode, row two selects
-// the fill/texture rasterizer backends and the cull mode.
-func (r *Renderer[T]) uiButtons() []uiButton {
+// getUIButtons returns the toolbar buttons, building the list lazily on first use
+// and caching it. The layout depends only on the window size (fixed at runtime),
+// so it never needs rebuilding; only the active highlight changes, which we refresh
+// here via each button's isActive predicate. This avoids reallocating the slice
+// (previously the single largest source of per-frame garbage).
+func (r *Renderer[T]) getUIButtons() []uiButton {
+	if r.uiButtonsCache == nil {
+		r.uiButtonsCache = r.buildUIButtons()
+	}
+	for i := range r.uiButtonsCache {
+		if r.uiButtonsCache[i].isActive != nil {
+			r.uiButtonsCache[i].active = r.uiButtonsCache[i].isActive()
+		}
+	}
+	return r.uiButtonsCache
+}
+
+// buildUIButtons constructs the toolbar layout: row one selects the render mode,
+// row two selects the fill/texture rasterizer backends and the cull mode, row three
+// selects the shading mode. Call getUIButtons instead — this is the one-time build.
+func (r *Renderer[T]) buildUIButtons() []uiButton {
 	margin := r.scaledPixels(10)
 	gap := r.scaledPixels(8)
 	rowGap := r.scaledPixels(8)
@@ -96,13 +116,13 @@ func (r *Renderer[T]) uiButtons() []uiButton {
 		mode := def.mode
 		w := r.buttonWidth(def.label)
 		buttons = append(buttons, uiButton{
-			label:  def.label,
-			x:      x,
-			y:      y,
-			w:      w,
-			h:      buttonH,
-			active: r.renderMethod == mode,
-			action: func() { r.renderMethod = mode },
+			label:    def.label,
+			x:        x,
+			y:        y,
+			w:        w,
+			h:        buttonH,
+			isActive: func() bool { return r.renderMethod == mode },
+			action:   func() { r.renderMethod = mode },
 		})
 		x += w + gap
 	}
@@ -112,34 +132,34 @@ func (r *Renderer[T]) uiButtons() []uiButton {
 	y = margin + buttonH + rowGap
 	row2 := []uiButton{
 		{
-			label:  "7 Fill SL",
-			active: r.fillRasterMode == config.FILL_SCANLINE,
-			action: func() { r.setFillRaster(config.FILL_SCANLINE) },
+			label:    "7 Fill SL",
+			isActive: func() bool { return r.fillRasterMode == config.FILL_SCANLINE },
+			action:   func() { r.setFillRaster(config.FILL_SCANLINE) },
 		},
 		{
-			label:  "8 Fill Pineda",
-			active: r.fillRasterMode == config.FILL_PINEDA,
-			action: func() { r.setFillRaster(config.FILL_PINEDA) },
+			label:    "8 Fill Pineda",
+			isActive: func() bool { return r.fillRasterMode == config.FILL_PINEDA },
+			action:   func() { r.setFillRaster(config.FILL_PINEDA) },
 		},
 		{
-			label:  "9 Tex SL",
-			active: r.textureRasterMode == config.TEXTURE_SCANLINE,
-			action: func() { r.setTextureRaster(config.TEXTURE_SCANLINE) },
+			label:    "9 Tex SL",
+			isActive: func() bool { return r.textureRasterMode == config.TEXTURE_SCANLINE },
+			action:   func() { r.setTextureRaster(config.TEXTURE_SCANLINE) },
 		},
 		{
-			label:  "0 Tex Pineda",
-			active: r.textureRasterMode == config.TEXTURE_PINEDA,
-			action: func() { r.setTextureRaster(config.TEXTURE_PINEDA) },
+			label:    "0 Tex Pineda",
+			isActive: func() bool { return r.textureRasterMode == config.TEXTURE_PINEDA },
+			action:   func() { r.setTextureRaster(config.TEXTURE_PINEDA) },
 		},
 		{
-			label:  "C Cull",
-			active: r.cullMode == config.CULL_BACKFACE,
-			action: func() { r.cullMode = config.CULL_BACKFACE },
+			label:    "C Cull",
+			isActive: func() bool { return r.cullMode == config.CULL_BACKFACE },
+			action:   func() { r.cullMode = config.CULL_BACKFACE },
 		},
 		{
-			label:  "X No Cull",
-			active: r.cullMode == config.CULL_NONE,
-			action: func() { r.cullMode = config.CULL_NONE },
+			label:    "X No Cull",
+			isActive: func() bool { return r.cullMode == config.CULL_NONE },
+			action:   func() { r.cullMode = config.CULL_NONE },
 		},
 	}
 	for i := range row2 {
@@ -157,14 +177,14 @@ func (r *Renderer[T]) uiButtons() []uiButton {
 	y = margin + (buttonH+rowGap)*2
 	row3 := []uiButton{
 		{
-			label:  "F Flat",
-			active: r.shadingMode == config.SHADING_FLAT,
-			action: func() { r.shadingMode = config.SHADING_FLAT },
+			label:    "F Flat",
+			isActive: func() bool { return r.shadingMode == config.SHADING_FLAT },
+			action:   func() { r.shadingMode = config.SHADING_FLAT },
 		},
 		{
-			label:  "G Gouraud",
-			active: r.shadingMode == config.SHADING_GOURAUD,
-			action: func() { r.shadingMode = config.SHADING_GOURAUD },
+			label:    "G Gouraud",
+			isActive: func() bool { return r.shadingMode == config.SHADING_GOURAUD },
+			action:   func() { r.shadingMode = config.SHADING_GOURAUD },
 		},
 	}
 	for i := range row3 {
@@ -185,7 +205,7 @@ func (r *Renderer[T]) renderModeToolbarHeight() int {
 }
 
 func (r *Renderer[T]) handleRenderModeButtonClick(x, y int) bool {
-	for _, button := range r.uiButtons() {
+	for _, button := range r.getUIButtons() {
 		if x >= button.x && x < button.x+button.w && y >= button.y && y < button.y+button.h {
 			button.action()
 			return true
@@ -195,7 +215,7 @@ func (r *Renderer[T]) handleRenderModeButtonClick(x, y int) bool {
 }
 
 func (r *Renderer[T]) drawRenderModeToolbar(screen *ebiten.Image) {
-	buttons := r.uiButtons()
+	buttons := r.getUIButtons()
 	barH := r.renderModeToolbarHeight()
 
 	vector.FillRect(screen, 0, 0, float32(r.config.WindowWidth), float32(barH), color.RGBA{0, 0, 0, 170}, false)

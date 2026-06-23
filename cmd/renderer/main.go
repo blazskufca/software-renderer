@@ -63,6 +63,7 @@ type Renderer[T utils.Numeric] struct {
 	textureRasterMode config.TextureRasterizer
 	fillRasterMode    config.FillRasterMode
 	shadingMode       config.ShadingMode
+	uiButtonsCache    []uiButton
 }
 
 // setFillRaster selects the triangle fill rasterizer and records the choice so
