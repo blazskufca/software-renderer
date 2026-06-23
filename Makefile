@@ -27,11 +27,13 @@ view-cpu:
 
 render-mem:
 	go tool pprof -svg -output "$(PGO_PROFILE)/mem.svg" "$(PGO_PROFILE)/mem.prof"
-	@echo "wrote $(PGO_PROFILE)/mem.svg"
+	go tool pprof -png -output "$(PGO_PROFILE)/mem.png" "$(PGO_PROFILE)/mem.prof"
+	@echo "wrote $(PGO_PROFILE)/mem.png and $(PGO_PROFILE)/mem.svg"
 
 render-cpu:
 	go tool pprof -svg -output "$(PGO_PROFILE)/cpu.svg" "$(PGO_PROFILE)/cpu.prof"
-	@echo "wrote $(PGO_PROFILE)/cpu.svg"
+	go tool pprof -png -output "$(PGO_PROFILE)/cpu.png" "$(PGO_PROFILE)/cpu.prof"
+	@echo "wrote $(PGO_PROFILE)/cpu.png $(PGO_PROFILE)/cpu.svg"
 
 build-pgo:
 	@test -f "$(PGO_PROFILE)/cpu.prof" || { echo "missing "$(PGO_PROFILE)/cpu.prof" — run 'make profile' first"; exit 1; }
