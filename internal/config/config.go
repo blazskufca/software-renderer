@@ -37,11 +37,18 @@ const (
 const (
 	TEXTURE_SCANLINE TextureRasterizer = iota
 	TEXTURE_PINEDA
+	// TEXTURE_PINEDA_SIMD is the vector-width-agnostic SIMD rewrite of
+	// TEXTURE_PINEDA. It is only selectable when the binary was built with
+	// GOEXPERIMENT=simd and the renderer is instantiated with float32.
+	TEXTURE_PINEDA_SIMD
 )
 
 const (
 	FILL_SCANLINE FillRasterMode = iota
 	FILL_PINEDA
+	// FILL_PINEDA_SIMD is the SIMD rewrite of FILL_PINEDA, subject to the same
+	// build/instantiation requirements as TEXTURE_PINEDA_SIMD.
+	FILL_PINEDA_SIMD
 )
 
 type TexturizedRasterizer[T utils.Numeric] func(x0, y0, z0, w0, u0, v0, x1, y1, z1, w1, u1, v1, x2, y2, z2, w2, u2, v2, i0, i1, i2 T, t *mesh.TextureData)

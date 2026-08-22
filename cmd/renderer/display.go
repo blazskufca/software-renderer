@@ -44,9 +44,11 @@ func (r *Renderer[T]) clearZBuffer(newZ T) {
 }
 
 // renderColorBuffer hands the color buffer straight to ebiten. The buffer is
-// already a flat R,G,B,A byte slice, so there is nothing to convert or copy.
+// already a flat R,G,B,A byte slice, so there is nothing to convert or copy —
+// only the SIMD overrun padding (see allocateFramebuffers) has to be sliced off,
+// because WritePixels wants exactly width*height*4 bytes.
 func (r *Renderer[T]) renderColorBuffer(screen *ebiten.Image) {
-	screen.WritePixels(r.colorBuffer)
+	screen.WritePixels(r.colorBuffer[:r.config.WindowWidth*r.config.WindowHeight*4])
 }
 
 func (r *Renderer[T]) drawGrid() {

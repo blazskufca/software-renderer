@@ -99,8 +99,8 @@ func (r *Renderer[T]) getUIButtons() []uiButton {
 }
 
 // buildUIButtons constructs the toolbar layout: row one selects the render mode,
-// row two selects the fill/texture rasterizer backends and the cull mode, row three
-// selects the shading mode. Call getUIButtons instead — this is the one-time build.
+// row two selects the fill/texture rasterizer backends, row three selects the cull
+// and shading modes. Call getUIButtons instead — this is the one-time build.
 func (r *Renderer[T]) buildUIButtons() []uiButton {
 	margin := r.scaledPixels(10)
 	gap := r.scaledPixels(8)
@@ -127,7 +127,9 @@ func (r *Renderer[T]) buildUIButtons() []uiButton {
 		x += w + gap
 	}
 
-	// Row 2: rasterizer backends and culling
+	// Row 2: rasterizer backends. The SIMD entries only appear on builds that can
+	// actually run them (GOEXPERIMENT=simd with a float32 renderer); elsewhere
+	// they would just alias the Pineda buttons next to them.
 	x = margin
 	y = margin + buttonH + rowGap
 	row2 := []uiButton{
@@ -151,16 +153,20 @@ func (r *Renderer[T]) buildUIButtons() []uiButton {
 			isActive: func() bool { return r.textureRasterMode == config.TEXTURE_PINEDA },
 			action:   func() { r.setTextureRaster(config.TEXTURE_PINEDA) },
 		},
-		{
-			label:    "C Cull",
-			isActive: func() bool { return r.cullMode == config.CULL_BACKFACE },
-			action:   func() { r.cullMode = config.CULL_BACKFACE },
-		},
-		{
-			label:    "X No Cull",
-			isActive: func() bool { return r.cullMode == config.CULL_NONE },
-			action:   func() { r.cullMode = config.CULL_NONE },
-		},
+	}
+	if r.simdAvailable {
+		row2 = append(row2,
+			uiButton{
+				label:    "- Fill SIMD",
+				isActive: func() bool { return r.fillRasterMode == config.FILL_PINEDA_SIMD },
+				action:   func() { r.setFillRaster(config.FILL_PINEDA_SIMD) },
+			},
+			uiButton{
+				label:    "= Tex SIMD",
+				isActive: func() bool { return r.textureRasterMode == config.TEXTURE_PINEDA_SIMD },
+				action:   func() { r.setTextureRaster(config.TEXTURE_PINEDA_SIMD) },
+			},
+		)
 	}
 	for i := range row2 {
 		w := r.buttonWidth(row2[i].label)
@@ -172,10 +178,20 @@ func (r *Renderer[T]) buildUIButtons() []uiButton {
 		x += w + gap
 	}
 
-	// Row 3: shading mode
+	// Row 3: culling and shading mode
 	x = margin
 	y = margin + (buttonH+rowGap)*2
 	row3 := []uiButton{
+		{
+			label:    "C Cull",
+			isActive: func() bool { return r.cullMode == config.CULL_BACKFACE },
+			action:   func() { r.cullMode = config.CULL_BACKFACE },
+		},
+		{
+			label:    "X No Cull",
+			isActive: func() bool { return r.cullMode == config.CULL_NONE },
+			action:   func() { r.cullMode = config.CULL_NONE },
+		},
 		{
 			label:    "F Flat",
 			isActive: func() bool { return r.shadingMode == config.SHADING_FLAT },

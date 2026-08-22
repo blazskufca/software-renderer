@@ -1,8 +1,14 @@
-.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu
+.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test bench
 
 GOROOT := $(shell go env GOROOT)
 
 PGO_PROFILE := profiling
+
+# The SIMD rasterizers (cmd/renderer/raster_simd.go) need the Go 1.27 `simd`
+# package, which lives behind an experiment flag. Everything still builds without
+# it — raster_simd_stub.go takes over and the SIMD toolbar buttons disappear — so
+# unset this if you want to compare against a plain build.
+export GOEXPERIMENT = simd
 
 # Run the native (desktop) build.
 run:
@@ -18,6 +24,14 @@ profile:
 
 profile-mem:
 	go run ./cmd/renderer -memprofile "$(PGO_PROFILE)/mem.prof"
+
+test:
+	go test ./...
+
+# Compares each rasterizer backend against the others; the SIMD benchmarks skip
+# themselves on a build without the experiment.
+bench:
+	go test ./cmd/renderer -run XXX -bench . -benchtime 2s
 
 view-mem:
 	go tool pprof -http=:6061 "$(PGO_PROFILE)/mem.prof"

@@ -43,9 +43,17 @@ type Config struct {
 }
 
 type Renderer[T utils.Numeric] struct {
-	config            Config
-	colorBuffer       []byte
-	zBuffer           []T
+	config      Config
+	colorBuffer []byte
+	zBuffer     []T
+	// zBufferF32 aliases zBuffer when the renderer is instantiated with float32.
+	// The SIMD rasterizers need a concrete []float32 to load and store vectors
+	// from, which a []T cannot provide; the type assertion in Setup is done once
+	// so the hot path only has to check for nil.
+	zBufferF32 []float32
+	// simdAvailable reports whether the SIMD rasterizers can actually run: the
+	// binary must be built with GOEXPERIMENT=simd and T must be float32.
+	simdAvailable     bool
 	frustumPlanes     [6]clipping.Plane[T]
 	projectionMatrix  matrix.Mat4[T]
 	meshes            []*mesh.Mesh[T]
@@ -72,6 +80,12 @@ type Renderer[T utils.Numeric] struct {
 func (r *Renderer[T]) setFillRaster(mode config.FillRasterMode) {
 	r.fillRasterMode = mode
 	switch mode {
+	case config.FILL_PINEDA_SIMD:
+		if !r.simdAvailable {
+			r.setFillRaster(config.FILL_PINEDA)
+			return
+		}
+		r.fillRasterFunc = r.drawFilledTrianglePinedaSIMD
 	case config.FILL_PINEDA:
 		r.fillRasterFunc = r.drawFilledTrianglePineda
 	default:
@@ -84,6 +98,12 @@ func (r *Renderer[T]) setFillRaster(mode config.FillRasterMode) {
 func (r *Renderer[T]) setTextureRaster(mode config.TextureRasterizer) {
 	r.textureRasterMode = mode
 	switch mode {
+	case config.TEXTURE_PINEDA_SIMD:
+		if !r.simdAvailable {
+			r.setTextureRaster(config.TEXTURE_PINEDA)
+			return
+		}
+		r.textureRasterFunc = r.drawTexturedTrianglePinedaSIMD
 	case config.TEXTURE_PINEDA:
 		r.textureRasterFunc = r.drawTexturedTrianglePineda
 	default:
@@ -124,10 +144,44 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	return renderer
 }
 
+// allocateFramebuffers sizes the colour and depth buffers and works out whether
+// the SIMD rasterizers can be used.
+//
+// Both buffers get simdPadPixels of slack past the visible area. A vector store
+// always writes a whole register, so the final chunk of the final scanline can
+// reach past the last visible pixel; the padding turns that into a harmless
+// write instead of an out-of-range slice, which keeps the inner loop free of a
+// tail branch. Everything that hands the buffer to ebiten must therefore slice
+// it back to the visible size (see renderColorBuffer).
+func (r *Renderer[T]) allocateFramebuffers() {
+	pixels := r.config.WindowWidth * r.config.WindowHeight
+	r.colorBuffer = make([]byte, (pixels+simdPadPixels)*4)
+	r.zBuffer = make([]T, pixels+simdPadPixels)
+
+	// The SIMD rasterizers load and store []float32 directly, so they can only
+	// run when T is float32. When it is, []T and []float32 are the same type and
+	// this assertion hands back an alias of the same backing array.
+	if zb, ok := any(r.zBuffer).([]float32); ok {
+		r.zBufferF32 = zb
+	}
+	r.simdAvailable = simdCompiledIn && r.zBufferF32 != nil
+
+	// Prefer the SIMD rasterizers when this build can run them. They render the
+	// same thing as the Pineda ones, and the toolbar can still switch back for
+	// an A/B comparison.
+	if r.simdAvailable {
+		if r.fillRasterMode == config.FILL_PINEDA {
+			r.setFillRaster(config.FILL_PINEDA_SIMD)
+		}
+		if r.textureRasterMode == config.TEXTURE_PINEDA {
+			r.setTextureRaster(config.TEXTURE_PINEDA_SIMD)
+		}
+	}
+}
+
 func (r *Renderer[T]) Setup() error {
 	r.initializeWindow()
-	r.colorBuffer = make([]byte, r.config.WindowWidth*r.config.WindowHeight*4)
-	r.zBuffer = make([]T, r.config.WindowWidth*r.config.WindowHeight)
+	r.allocateFramebuffers()
 	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
 	//for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
 	//	// Extract the individual bytes and cast them to uint32 so we can shift them
@@ -510,6 +564,15 @@ func (r *Renderer[T]) processInput() (quit bool) {
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDigit0) {
 		r.setTextureRaster(config.TEXTURE_PINEDA)
+	}
+	// The SIMD backends are only reachable on builds that have them; on the rest
+	// the setters would silently fall back, so don't pretend the key does
+	// anything.
+	if r.simdAvailable && inpututil.IsKeyJustPressed(ebiten.KeyMinus) {
+		r.setFillRaster(config.FILL_PINEDA_SIMD)
+	}
+	if r.simdAvailable && inpututil.IsKeyJustPressed(ebiten.KeyEqual) {
+		r.setTextureRaster(config.TEXTURE_PINEDA_SIMD)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		r.cullMode = config.CULL_BACKFACE
