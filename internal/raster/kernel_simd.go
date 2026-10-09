@@ -28,7 +28,10 @@ func textureRows(t *Target, s *triSetup, tex *mesh.TextureData) {
 	textureRowsScalar(t, s, tex)
 }
 
-func wrapLanes(i, n, nMinus1 simd.Int32s, invN simd.Float32s) simd.Int32s {
+func wrapLanes(i, n, nMinus1 simd.Int32s, invN simd.Float32s, pow2 bool) simd.Int32s {
+	if pow2 {
+		return i.And(nMinus1)
+	}
 	zero := n.Sub(n)
 	r := i.Sub(i.ConvertToFloat32().Mul(invN).ConvertToInt32().Mul(n))
 	r = r.Sub(n).IfElse(r.GreaterEqual(n), r)
@@ -42,6 +45,16 @@ func shadeLanes(c simd.Uint32s, f simd.Float32s) simd.Uint32s {
 		return c.And(mask).BitsToInt32().ConvertToFloat32().Mul(f).ConvertToInt32().ToBits().And(mask)
 	}
 	return c.And(simd.BroadcastUint32s(0xFF000000)).Or(channel(0x00FF0000)).Or(channel(0x0000FF00)).Or(channel(0x000000FF))
+}
+
+// the portable API has no "any lane set", so spill the mask and OR the lanes
+func anyLane(m simd.Mask32s, buf []int32) bool {
+	m.ToInt32s().Store(buf)
+	var any int32
+	for _, v := range buf {
+		any |= v
+	}
+	return any != 0
 }
 
 func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
@@ -86,13 +99,13 @@ func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
 
 func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 	edges := s.edges
-	var idx [maxLanes]int32
+	pow2 := isPow2(tex.Width) && isPow2(tex.Height)
+	var idx, hit [maxLanes]int32
 	var texel [maxLanes]uint32
 	var probe simd.Float32s
 	n := probe.Len()
-	lane := simd.LoadInt32s(laneIndex[:n])
-	stepI := simd.BroadcastInt32s(int32(n))
-	stepF := stepI.ConvertToFloat32()
+	lane := simd.LoadInt32s(laneIndex[:n]).ConvertToFloat32()
+	stepF := simd.BroadcastInt32s(int32(n)).ConvertToFloat32()
 	oneI := simd.BroadcastInt32s(1)
 	one := oneI.ConvertToFloat32()
 	zero := one.Sub(one)
@@ -117,20 +130,22 @@ func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 		dst := t.Color[y*t.Width : (y+1)*t.Width]
 		depth := t.Depth[y*t.Width : (y+1)*t.Width]
 		xa := lo - lo%n
-		loV, hiV := simd.BroadcastInt32s(int32(lo)), simd.BroadcastInt32s(int32(hi))
-		xi := lane.Add(simd.BroadcastInt32s(int32(xa)))
-		xf := lane.Add(simd.BroadcastInt32s(int32(xa - s.xMin))).ConvertToFloat32()
-		for ; xa <= hi; xa += n {
-			covered := xi.GreaterEqual(loV).And(xi.LessEqual(hiV))
+		loF := simd.BroadcastInt32s(int32(lo - s.xMin)).ConvertToFloat32()
+		hiF := simd.BroadcastInt32s(int32(hi - s.xMin)).ConvertToFloat32()
+		xf := lane.Add(simd.BroadcastInt32s(int32(xa - s.xMin)).ConvertToFloat32())
+		for ; xa <= hi; xa, xf = xa+n, xf.Add(stepF) {
 			iw := iwRow.Add(iwX.Mul(xf))
 			z := one.Sub(iw)
 			zOld := simd.LoadFloat32s(depth[xa : xa+n])
-			write := covered.And(z.Less(zOld))
+			write := xf.GreaterEqual(loF).And(xf.LessEqual(hiF)).And(z.Less(zOld))
+			if !anyLane(write, hit[:n]) {
+				continue
+			}
 			rw := one.Div(iw)
 			u := uwRow.Add(uwX.Mul(xf)).Mul(rw)
 			v := vwRow.Add(vwX.Mul(xf)).Mul(rw)
-			tx := wrapLanes(u.Mul(twF).Abs().ConvertToInt32(), tw, twM1, invTW)
-			ty := wrapLanes(v.Mul(thF).Abs().ConvertToInt32(), th, thM1, invTH)
+			tx := wrapLanes(u.Mul(twF).Abs().ConvertToInt32(), tw, twM1, invTW, pow2)
+			ty := wrapLanes(v.Mul(thF).Abs().ConvertToInt32(), th, thM1, invTH, pow2)
 			ty.Mul(tw).Add(tx).Store(idx[:n])
 			for i := range n {
 				texel[i] = pix[idx[i]]
@@ -138,7 +153,6 @@ func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 			lit := shadeLanes(simd.LoadUint32s(texel[:n]), lRow.Add(lX.Mul(xf)).Max(zero).Min(one))
 			lit.IfElse(write, simd.LoadUint32s(dst[xa:xa+n])).Store(dst[xa : xa+n])
 			z.IfElse(write, zOld).Store(depth[xa : xa+n])
-			xi, xf = xi.Add(stepI), xf.Add(stepF)
 		}
 	}
 	clearUpperBits()

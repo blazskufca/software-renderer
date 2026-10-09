@@ -15,10 +15,14 @@ func TestSIMDMatchesScalar(t *testing.T) {
 	t.Logf("vector bits %d, emulated %v", simd.VectorBitSize(), simd.Emulated())
 
 	rng := rand.New(rand.NewPCG(3, 4))
-	tex := randomTexture(rng, 64, 48)
-	tris := randomTriangles(rng, 3000, []float32{3, 12, 60, 300}, tex)
+	tris := randomTriangles(rng, 3000, []float32{3, 12, 60, 300}, nil)
+	odd, pow2 := randomTexture(rng, 64, 48), randomTexture(rng, 64, 64)
 
-	for _, mode := range []string{"textured", "filled"} {
+	for _, mode := range []string{"textured 64x48", "textured 64x64", "filled"} {
+		tex := odd
+		if mode == "textured 64x64" {
+			tex = pow2
+		}
 		a, err := NewTarget(testW, testH)
 		if err != nil {
 			t.Fatal(err)
@@ -32,7 +36,7 @@ func TestSIMDMatchesScalar(t *testing.T) {
 			if !ok {
 				continue
 			}
-			if mode == "textured" {
+			if mode != "filled" {
 				textureRowsSIMD(a, &s, tex)
 				textureRowsScalar(b, &s, tex)
 			} else {

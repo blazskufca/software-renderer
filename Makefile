@@ -50,8 +50,8 @@ web:
 
 # Build the web bundle and serve it. Workers + wasm require http:// (not file://).
 serve: web
-	@echo "Serving http://localhost:8080  (Ctrl-C to stop)"
-	cd web && python3 -m http.server 8080
+	@echo "Serving http://localhost:8081  (Ctrl-C to stop)"
+	cd web && python3 -m http.server 8081
 
 test:
 	go test ./...

@@ -9,7 +9,12 @@ import (
 
 func abs32(f float32) float32 { return math.Float32frombits(math.Float32bits(f) &^ (1 << 31)) }
 
-func wrapIndex(i, n int32, invN float32) int32 {
+func isPow2(n int) bool { return n > 0 && n&(n-1) == 0 }
+
+func wrapIndex(i, n int32, invN float32, pow2 bool) int32 {
+	if pow2 {
+		return i & (n - 1)
+	}
 	r := i - int32(float32(i)*invN)*n
 	if r >= n {
 		r -= n
@@ -51,6 +56,7 @@ func textureRowsScalar(t *Target, s *triSetup, tex *mesh.TextureData) {
 	twF, thF := float32(tw), float32(th)
 	invTW, invTH := 1/twF, 1/thF
 	pix := tex.PixelData
+	pow2 := isPow2(tex.Width) && isPow2(tex.Height)
 	iwX, uwX, vwX, lX := s.invW.dx, s.uw.dx, s.vw.dx, s.light.dx
 	edges := s.edges
 	for y := s.yMin; y <= s.yMax; y++ {
@@ -75,8 +81,8 @@ func textureRowsScalar(t *Target, s *triSetup, tex *mesh.TextureData) {
 			rw := 1 / iw
 			u := (uwRow + float32(uwX*xf)) * rw
 			v := (vwRow + float32(vwX*xf)) * rw
-			tx := wrapIndex(int32(abs32(u*twF)), tw, invTW)
-			ty := wrapIndex(int32(abs32(v*thF)), th, invTH)
+			tx := wrapIndex(int32(abs32(u*twF)), tw, invTW, pow2)
+			ty := wrapIndex(int32(abs32(v*thF)), th, invTH, pow2)
 			dst[x] = light.LightApplyIntensity(pix[ty*tw+tx], lRow+float32(lX*xf))
 			depth[x] = z
 		}
