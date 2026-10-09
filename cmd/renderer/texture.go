@@ -11,11 +11,11 @@ import (
 	"github.com/blazskufca/software-renderer/internal/vector"
 )
 
-func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Vec4[T], AUV, BUV, CUV texture.Tex2[T], i0, i1, i2 T) {
+func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Vec4[float32], AUV, BUV, CUV texture.Tex2[float32], i0, i1, i2 float32) {
 	if x < 0 || x >= r.config.WindowWidth || y < 0 || y >= r.config.WindowHeight {
 		return
 	}
-	p := vector.Vec2[T]{X: T(x), Y: T(y)}
+	p := vector.Vec2[float32]{X: float32(x), Y: float32(y)}
 	aVec2 := a.ToVec2()
 	bVec2 := b.ToVec2()
 	cVec2 := c.ToVec2()
@@ -42,13 +42,13 @@ func (r *Renderer[T]) drawTexel(x, y int, t *mesh.TextureData, a, b, c vector.Ve
 	interpolatedReciprocalW = 1 - interpolatedReciprocalW
 
 	// Only draw pixels if depth value if less than the one previously stored in the Z-buffer
-	if interpolatedReciprocalW < r.zBuffer[(r.config.WindowWidth*y)+x] {
+	if interpolatedReciprocalW < r.target.Depth[(r.config.WindowWidth*y)+x] {
 		// Interpolate the per-vertex light intensity across the face (Gouraud);
 		// flat shading passes equal vertex values so this is a constant.
 		intensity := i0*alpha + i1*beta + i2*gamma
-		r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], float32(intensity)))
+		r.drawPixel(x, y, light.LightApplyIntensity(t.PixelData[(texY*t.Width)+texX], intensity))
 		// Update the Z-buffer with 1/w for current pixel
-		r.zBuffer[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
+		r.target.Depth[(r.config.WindowWidth*y)+x] = interpolatedReciprocalW
 
 	}
 }

@@ -16,6 +16,8 @@ import (
 	mesh "github.com/blazskufca/software-renderer/internal/face"
 	"github.com/blazskufca/software-renderer/internal/light"
 	"github.com/blazskufca/software-renderer/internal/matrix"
+	"github.com/blazskufca/software-renderer/internal/pipeline"
+	"github.com/blazskufca/software-renderer/internal/raster"
 	"github.com/blazskufca/software-renderer/internal/texture"
 	"github.com/blazskufca/software-renderer/internal/utils"
 	"github.com/blazskufca/software-renderer/internal/vector"
@@ -44,12 +46,11 @@ type Config struct {
 
 type Renderer[T utils.Numeric] struct {
 	config            Config
-	colorBuffer       []byte
-	zBuffer           []T
+	target            *raster.Target
 	frustumPlanes     [6]clipping.Plane[T]
 	projectionMatrix  matrix.Mat4[T]
 	meshes            []*mesh.Mesh[T]
-	trianglesToDraw   []triangle[T]
+	trianglesToDraw   []raster.Triangle
 	renderMethod      config.RenderMode
 	cullMode          config.CullMode
 	previousFrameTime time.Time
@@ -58,37 +59,10 @@ type Renderer[T utils.Numeric] struct {
 	light             light.Light[T]
 	prevMouseX        int
 	prevMouseY        int
-	textureRasterFunc config.TexturizedRasterizer[T]
-	fillRasterFunc    config.FillRasterizer[T]
 	textureRasterMode config.TextureRasterizer
 	fillRasterMode    config.FillRasterMode
 	shadingMode       config.ShadingMode
 	uiButtonsCache    []uiButton
-}
-
-// setFillRaster selects the triangle fill rasterizer and records the choice so
-// the UI can reflect which backend is active (func values aren't comparable, so
-// we track the mode enum alongside the func).
-func (r *Renderer[T]) setFillRaster(mode config.FillRasterMode) {
-	r.fillRasterMode = mode
-	switch mode {
-	case config.FILL_PINEDA:
-		r.fillRasterFunc = r.drawFilledTrianglePineda
-	default:
-		r.fillRasterFunc = r.drawFilledTriangle
-	}
-}
-
-// setTextureRaster selects the texture-mapping rasterizer and records the choice
-// so the UI can reflect which backend is active.
-func (r *Renderer[T]) setTextureRaster(mode config.TextureRasterizer) {
-	r.textureRasterMode = mode
-	switch mode {
-	case config.TEXTURE_PINEDA:
-		r.textureRasterFunc = r.drawTexturedTrianglePineda
-	default:
-		r.textureRasterFunc = r.drawTexturedTriangle
-	}
 }
 
 type RendererOpts[T utils.Numeric] func(*Renderer[T])
@@ -111,8 +85,8 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.config.AspectRatioX = float64(renderer.config.WindowWidth) / float64(renderer.config.WindowHeight)
 	renderer.config.FovX = 2 * (math.Atan(math.Tan(renderer.config.FovY/2) * renderer.config.AspectRatioX))
 	renderer.cullMode = config.CULL_BACKFACE
-	renderer.setTextureRaster(config.TEXTURE_PINEDA)
-	renderer.setFillRaster(config.FILL_PINEDA)
+	renderer.textureRasterMode = config.TEXTURE_PINEDA
+	renderer.fillRasterMode = config.FILL_PINEDA
 	renderer.renderMethod = config.RENDER_TEXTURED
 	renderer.shadingMode = config.SHADING_GOURAUD
 	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{X: -1, Y: -1, Z: 1}}
@@ -126,18 +100,12 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 
 func (r *Renderer[T]) Setup() error {
 	r.initializeWindow()
-	r.colorBuffer = make([]byte, r.config.WindowWidth*r.config.WindowHeight*4)
-	r.zBuffer = make([]T, r.config.WindowWidth*r.config.WindowHeight)
-	//meshTexture = make([]uint32, len(REDBRICK_TEXTURE)/4)
-	//for i := 0; i < len(REDBRICK_TEXTURE); i += 4 {
-	//	// Extract the individual bytes and cast them to uint32 so we can shift them
-	//	b := uint32(REDBRICK_TEXTURE[i])
-	//	g := uint32(REDBRICK_TEXTURE[i+1])
-	//	r := uint32(REDBRICK_TEXTURE[i+2])
-	//	a := uint32(REDBRICK_TEXTURE[i+3])
-	//	pixelColor := (a << 24) | (r << 16) | (g << 8) | b
-	//	meshTexture[i/4] = pixelColor
-	//}
+	target, err := raster.NewTarget(r.config.WindowWidth, r.config.WindowHeight)
+	if err != nil {
+		return err
+	}
+	r.target = target
+	r.target.Clear(0xFF000000)
 
 	// Initialize the perspective projection matrix
 	m := matrix.Mat4MakePerspective[T, T](T(r.config.FovY), T(r.config.AspectRatioY), T(r.config.ZNear), T(r.config.ZFar))
@@ -170,38 +138,37 @@ func (r *Renderer[T]) Setup() error {
 }
 
 func (r *Renderer[T]) Draw(screen *ebiten.Image) {
-	for i := 0; i < len(r.trianglesToDraw); i++ {
-		triangle := r.trianglesToDraw[i]
+	for i := range r.trianglesToDraw {
+		tri := &r.trianglesToDraw[i]
 		if r.renderMethod == config.RENDER_FILL_TRIANGLE || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE {
-			r.fillRasterFunc(
-				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W,
-				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W,
-				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W,
-				triangle.color,
-				triangle.lightIntensity[0], triangle.lightIntensity[1], triangle.lightIntensity[2])
+			if r.fillRasterMode == config.FILL_PINEDA {
+				r.target.FillTriangle(tri)
+			} else {
+				r.drawFilledTriangle(tri)
+			}
 		}
 
 		if r.renderMethod == config.RENDER_TEXTURED || r.renderMethod == config.RENDER_TEXTURED_WIRE {
-			r.textureRasterFunc(
-				triangle.points[0].X, triangle.points[0].Y, triangle.points[0].Z, triangle.points[0].W, triangle.textCoords[0].U, triangle.textCoords[0].V,
-				triangle.points[1].X, triangle.points[1].Y, triangle.points[1].Z, triangle.points[1].W, triangle.textCoords[1].U, triangle.textCoords[1].V,
-				triangle.points[2].X, triangle.points[2].Y, triangle.points[2].Z, triangle.points[2].W, triangle.textCoords[2].U, triangle.textCoords[2].V,
-				triangle.lightIntensity[0], triangle.lightIntensity[1], triangle.lightIntensity[2], triangle.texture)
+			if r.textureRasterMode == config.TEXTURE_PINEDA {
+				r.target.TextureTriangle(tri)
+			} else {
+				r.drawTexturedTriangle(tri)
+			}
 		}
 
 		if r.renderMethod == config.RENDER_WIRE || r.renderMethod == config.RENDER_WIRE_VERTEX || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == config.RENDER_TEXTURED_WIRE {
-			r.drawTriangle(int(triangle.points[0].X), int(triangle.points[0].Y),
-				int(triangle.points[1].X), int(triangle.points[1].Y),
-				int(triangle.points[2].X), int(triangle.points[2].Y), 0xFFFFFFFF)
+			r.drawTriangle(int(tri.V[0].X), int(tri.V[0].Y),
+				int(tri.V[1].X), int(tri.V[1].Y),
+				int(tri.V[2].X), int(tri.V[2].Y), 0xFFFFFFFF)
 		}
 		if r.renderMethod == config.RENDER_WIRE_VERTEX {
-			r.drawRectangle(int(triangle.points[0].X)-3, int(triangle.points[0].Y)-3, 6, 6, 0xFFFFFF00)
-			r.drawRectangle(int(triangle.points[1].X)-3, int(triangle.points[1].Y)-3, 6, 6, 0xFFFFFF00)
-			r.drawRectangle(int(triangle.points[2].X)-3, int(triangle.points[2].Y)-3, 6, 6, 0xFFFFFF00)
+			r.drawRectangle(int(tri.V[0].X)-3, int(tri.V[0].Y)-3, 6, 6, 0xFFFFFF00)
+			r.drawRectangle(int(tri.V[1].X)-3, int(tri.V[1].Y)-3, 6, 6, 0xFFFFFF00)
+			r.drawRectangle(int(tri.V[2].X)-3, int(tri.V[2].Y)-3, 6, 6, 0xFFFFFF00)
 		}
 
 	}
-	r.renderColorBuffer(screen)
+	screen.WritePixels(r.target.Bytes())
 	r.drawRenderModeToolbar(screen)
 	r.drawMovementButtons(screen)
 	// Overlay the FPS counter on top of the rendered frame
@@ -209,10 +176,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 		"FPS: %.1f, TPS: %.1f\nTriangles: %d",
 		ebiten.ActualFPS(), ebiten.ActualTPS(), len(r.trianglesToDraw)),
 		8, r.renderModeToolbarHeight()+8)
-	// Clear color buffer
-	r.clearColorBuffer(0xFF000000)
-	// Clear Z-buffer
-	r.clearZBuffer(1)
+	r.target.Clear(0xFF000000)
 }
 
 // Layout reports the renderer's internal resolution; ebiten scales this to the
@@ -234,6 +198,19 @@ func (r *Renderer[T]) update() {
 	// deltaTime is measured in Update, before input is processed.
 	r.trianglesToDraw = r.trianglesToDraw[:0]
 
+	view, dir := pipeline.ViewMatrix(r.camera.Position, r.camera.YawAngle, r.camera.PitchAngle)
+	r.camera.Direction = dir
+	params := pipeline.Params[T]{
+		View:       view,
+		Projection: r.projectionMatrix,
+		Frustum:    r.frustumPlanes,
+		Light:      r.light,
+		Shading:    r.shadingMode,
+		Cull:       r.cullMode,
+		Width:      r.config.WindowWidth,
+		Height:     r.config.WindowHeight,
+	}
+
 	for _, currentMesh := range r.meshes {
 		if currentMesh == nil {
 			panic("nil currentMesh")
@@ -244,151 +221,8 @@ func (r *Renderer[T]) update() {
 				panic(err)
 			}
 		}
-		//currentMesh.rotation.X += math.Pi / 2 * deltaTime
-		//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
-		//currentMesh.rotation.Y += math.Pi / 2 * deltaTime
-		//currentMesh.rotation.Z += math.Pi / 2 * deltaTime
-		//currentMesh.translation.Z = 5
-		//globalCamera.position.X += 2.0 * deltaTime
-		//globalCamera.position.Y += 2.0 * deltaTime
-
-		//currentMesh.scale.X += 0.002
-		//currentMesh.scale.Y += 0.001
-		//currentMesh.translation.X += 0.01
-
-		scaleMatrix := matrix.Mat4MakeScale[T](currentMesh.Scale.X, currentMesh.Scale.Y, currentMesh.Scale.Z)
-		translationMatrix := matrix.Mat4MakeTranslation[T](currentMesh.Translation.X, currentMesh.Translation.Y, currentMesh.Translation.Z)
-		rotationMatrixX, rotationMatrixY, rotationMatrixZ := matrix.Mat4MakeRotationX[T](currentMesh.Rotation.X), matrix.Mat4MakeRotationY[T](currentMesh.Rotation.Y), matrix.Mat4MakeRotationZ[T](currentMesh.Rotation.Z)
-		// Create a view matrix
-		// Start the target as normalized Z axis
-		target := vector.Vec3[T]{Z: 1}
-
-		cameraYaw := matrix.Mat4MakeRotationY[T](T(r.camera.YawAngle))
-		cameraPitch := matrix.Mat4MakeRotationX[T](T(r.camera.PitchAngle))
-		cameraRotation := cameraYaw.MulMat4(cameraPitch)
-		r.camera.Direction = cameraRotation.MulVec4(target.ToVec4()).ToVec3()
-
-		target = r.camera.Position.Add(r.camera.Direction)
-
-		viewMatrix := matrix.Mat4LookAt(r.camera.Position, target, vector.Vec3[T]{Y: 1})
-
-		// order matters
-		// Scale -> rotate -> translate
-		worldMatrix := matrix.Mat4Identity[T]()
-		worldMatrix = scaleMatrix.MulMat4(worldMatrix)
-		worldMatrix = rotationMatrixZ.MulMat4(worldMatrix)
-		worldMatrix = rotationMatrixY.MulMat4(worldMatrix)
-		worldMatrix = rotationMatrixX.MulMat4(worldMatrix)
-		worldMatrix = translationMatrix.MulMat4(worldMatrix)
-		worldMatrix = viewMatrix.MulMat4(worldMatrix)
-
-		for i := 0; i < len(currentMesh.Faces); i++ {
-			// Face index into the vertices array
-			//if i != 4 {
-			//	continue
-			//}
-			meshFace := currentMesh.Faces[i]
-			facesVertices := [3]vector.Vec3[T]{}
-
-			facesVertices[0] = currentMesh.Vertices[meshFace.A]
-			facesVertices[1] = currentMesh.Vertices[meshFace.B]
-			facesVertices[2] = currentMesh.Vertices[meshFace.C]
-			var transformedVertexArr [3]vector.Vec4[T]
-			for j := 0; j < 3; j++ {
-				transformedVertex := facesVertices[j].ToVec4()
-				transformedVertex = worldMatrix.MulVec4(transformedVertex)
-				transformedVertexArr[j] = transformedVertex // Save current vertex in arr of transformedVertex
-			}
-			vectorA, vectorB, vectorC := transformedVertexArr[0].ToVec3(), transformedVertexArr[1].ToVec3(), transformedVertexArr[2].ToVec3()
-			BAVector, CAVector := vectorB.Sub(vectorA), vectorC.Sub(vectorA)
-			// For vectors BA and CA we also only care about the direction and not the magnitude
-			BAVector.Normalize()
-			CAVector.Normalize()
-
-			// We are using a left-handed coordinate system (i.e Z grows inside the monitor)
-			// Face normal vector can be normalized
-			faceNormal := BAVector.Cross(CAVector)
-			faceNormal.Normalize()
-
-			flatShadePercent := -faceNormal.Dot(r.light.Direction)
-			faceIntensities := [3]T{flatShadePercent, flatShadePercent, flatShadePercent}
-
-			// Per-vertex light intensities for Gouraud shading.
-			if r.shadingMode == config.SHADING_GOURAUD {
-				vertexNormals := [3]vector.Vec3[T]{meshFace.ANormal, meshFace.BNormal, meshFace.CNormal}
-				var vertexIntensities [3]T
-				for j := 0; j < 3; j++ {
-					n := vertexNormals[j]
-					transformedNormal := worldMatrix.MulVec4(vector.Vec4[T]{X: n.X, Y: n.Y, Z: n.Z}).ToVec3()
-					if transformedNormal.Length() == 0 {
-						transformedNormal = faceNormal
-					} else {
-						transformedNormal.Normalize()
-					}
-					vertexIntensities[j] = -transformedNormal.Dot(r.light.Direction)
-				}
-				faceIntensities = vertexIntensities
-			}
-
-			if r.cullMode == config.CULL_BACKFACE {
-				// Backface culling
-				origin := vector.Vec3[T]{} // Camera position can change so we need a real 0, 0, 0
-				cameraRayVec := origin.Sub(vectorA)
-
-				cameraRayFaceNormalDot := faceNormal.Dot(cameraRayVec)
-
-				// If dot product is less than 0 we should hide the face
-				if cameraRayFaceNormalDot < 0 {
-					continue
-				}
-			}
-
-			// Clipping stage
-			poly := clipping.NewPolyFromTriangle(&transformedVertexArr, &[3]texture.Tex2[T]{meshFace.AUV, meshFace.BUV, meshFace.CUV}, &faceIntensities)
-			poly.ClipPolygon(&r.frustumPlanes)
-			// Break the clipped polygon apart into triangles (fan triangulation)
-			var clippedTriangles [10]triangle[T]
-			var numberOfClippedTriangles int = poly.NumberOfVertices - 2
-			for t := 0; t < numberOfClippedTriangles; t++ {
-				tr := triangle[T]{}
-				tr.points = [3]vector.Vec4[T]{poly.Vertices[0].ToVec4(), poly.Vertices[t+1].ToVec4(), poly.Vertices[t+2].ToVec4()}
-				tr.textCoords = [3]texture.Tex2[T]{poly.TexCoords[0], poly.TexCoords[t+1], poly.TexCoords[t+2]}
-				tr.lightIntensity = [3]T{poly.LightIntensities[0], poly.LightIntensities[t+1], poly.LightIntensities[t+2]}
-				clippedTriangles[t] = tr
-			}
-			for i := 0; i < numberOfClippedTriangles; i++ {
-				clippedTriangle := clippedTriangles[i]
-
-				var projectedPoints [3]vector.Vec4[T]
-				for j := 0; j < len(transformedVertexArr); j++ {
-					projectedPoints[j] = r.projectionMatrix.Mat4MulVec4Project(clippedTriangle.points[j])
-
-					// Scale into the view
-					projectedPoints[j].X *= T(r.config.WindowWidth / 2)
-					projectedPoints[j].Y *= T(r.config.WindowHeight / 2)
-
-					// Invert Y values to account for difference between Y0 of color buffer (top left) and obj files
-					projectedPoints[j].Y *= -1
-					// Translate the projected point into the middle of the screen
-					projectedPoints[j].X += T(r.config.WindowWidth / 2)
-					projectedPoints[j].Y += T(r.config.WindowHeight / 2)
-				}
-				var projectedTriangle triangle[T]
-				projectedTriangle.color = meshFace.Color
-				projectedTriangle.lightIntensity = clippedTriangle.lightIntensity
-				projectedTriangle.points[0] = projectedPoints[0]
-				projectedTriangle.points[1] = projectedPoints[1]
-				projectedTriangle.points[2] = projectedPoints[2]
-				projectedTriangle.textCoords[0] = clippedTriangle.textCoords[0]
-				projectedTriangle.textCoords[1] = clippedTriangle.textCoords[1]
-				projectedTriangle.textCoords[2] = clippedTriangle.textCoords[2]
-				projectedTriangle.avgDepth = (transformedVertexArr[0].Z + transformedVertexArr[1].Z + transformedVertexArr[2].Z) / 3
-				projectedTriangle.texture = &currentMesh.Texture
-				r.trianglesToDraw = append(r.trianglesToDraw, projectedTriangle)
-			}
-		}
+		r.trianglesToDraw = pipeline.AppendMesh(r.trianglesToDraw, currentMesh, &params)
 	}
-
 }
 
 // Camera movement primitives. These are shared by the keyboard handlers and the
@@ -500,16 +334,16 @@ func (r *Renderer[T]) processInput() (quit bool) {
 		r.renderMethod = config.RENDER_TEXTURED_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key7) {
-		r.setFillRaster(config.FILL_SCANLINE)
+		r.fillRasterMode = config.FILL_SCANLINE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key8) {
-		r.setFillRaster(config.FILL_PINEDA)
+		r.fillRasterMode = config.FILL_PINEDA
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key9) {
-		r.setTextureRaster(config.TEXTURE_SCANLINE)
+		r.textureRasterMode = config.TEXTURE_SCANLINE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDigit0) {
-		r.setTextureRaster(config.TEXTURE_PINEDA)
+		r.textureRasterMode = config.TEXTURE_PINEDA
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		r.cullMode = config.CULL_BACKFACE
