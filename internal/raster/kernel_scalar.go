@@ -4,10 +4,17 @@ import (
 	"math"
 
 	mesh "github.com/blazskufca/software-renderer/internal/face"
-	"github.com/blazskufca/software-renderer/internal/light"
 )
 
 func abs32(f float32) float32 { return math.Float32frombits(math.Float32bits(f) &^ (1 << 31)) }
+
+// light as 0..256 fixed point; R and B share one multiply since their products can't overlap
+func shade(c uint32, f float32) uint32 {
+	l := uint32(min(max(int32(f*256), 0), 256))
+	rb := ((c & 0x00FF00FF) * l >> 8) & 0x00FF00FF
+	g := ((c & 0x0000FF00) * l >> 8) & 0x0000FF00
+	return c&0xFF000000 | rb | g
+}
 
 func isPow2(n int) bool { return n > 0 && n&(n-1) == 0 }
 
@@ -45,7 +52,7 @@ func fillRowsScalar(t *Target, s *triSetup, color uint32) {
 			if !(z < depth[x]) {
 				continue
 			}
-			dst[x] = light.LightApplyIntensity(color, lRow+float32(lX*xf))
+			dst[x] = shade(color, lRow+float32(lX*xf))
 			depth[x] = z
 		}
 	}
@@ -83,7 +90,7 @@ func textureRowsScalar(t *Target, s *triSetup, tex *mesh.TextureData) {
 			v := (vwRow + float32(vwX*xf)) * rw
 			tx := wrapIndex(int32(abs32(u*twF)), tw, invTW, pow2)
 			ty := wrapIndex(int32(abs32(v*thF)), th, invTH, pow2)
-			dst[x] = light.LightApplyIntensity(pix[ty*tw+tx], lRow+float32(lX*xf))
+			dst[x] = shade(pix[ty*tw+tx], lRow+float32(lX*xf))
 			depth[x] = z
 		}
 	}

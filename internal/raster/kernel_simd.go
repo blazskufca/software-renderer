@@ -39,16 +39,27 @@ func wrapLanes(i, n, nMinus1 simd.Int32s, invN simd.Float32s, pow2 bool) simd.In
 	return r.Max(zero).Min(nMinus1)
 }
 
+// same fixed-point math as shade; clamping after the conversion avoids float min/max
 func shadeLanes(c simd.Uint32s, f simd.Float32s) simd.Uint32s {
-	channel := func(m uint32) simd.Uint32s {
-		mask := simd.BroadcastUint32s(m)
-		return c.And(mask).BitsToInt32().ConvertToFloat32().Mul(f).ConvertToInt32().ToBits().And(mask)
-	}
-	return c.And(simd.BroadcastUint32s(0xFF000000)).Or(channel(0x00FF0000)).Or(channel(0x0000FF00)).Or(channel(0x000000FF))
+	full := simd.BroadcastInt32s(256)
+	l := f.Mul(full.ConvertToFloat32()).ConvertToInt32()
+	l = l.Max(full.Sub(full)).Min(full)
+	rb, g, lb := simd.BroadcastUint32s(0x00FF00FF), simd.BroadcastUint32s(0x0000FF00), l.ToBits()
+	return c.And(simd.BroadcastUint32s(0xFF000000)).
+		Or(c.And(rb).Mul(lb).ShiftAllRight(8).And(rb)).
+		Or(c.And(g).Mul(lb).ShiftAllRight(8).And(g))
 }
 
-// the portable API has no "any lane set", so spill the mask and OR the lanes
-func anyLane(m simd.Mask32s, buf []int32) bool {
+func gatherMemory(idx simd.Int32s, pix []uint32, idxBuf []int32, texelBuf []uint32) simd.Uint32s {
+	idx.Store(idxBuf)
+	for i := 0; i < len(idxBuf); i += 4 {
+		d, s := (*[4]uint32)(texelBuf[i:i+4]), (*[4]int32)(idxBuf[i:i+4])
+		d[0], d[1], d[2], d[3] = pix[s[0]], pix[s[1]], pix[s[2]], pix[s[3]]
+	}
+	return simd.LoadUint32s(texelBuf)
+}
+
+func anyLaneMemory(m simd.Mask32s, buf []int32) bool {
 	m.ToInt32s().Store(buf)
 	var any int32
 	for _, v := range buf {
@@ -88,7 +99,7 @@ func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
 			z := one.Sub(iwRow.Add(iwX.Mul(xf)))
 			zOld := simd.LoadFloat32s(depth[xa : xa+n])
 			write := covered.And(z.Less(zOld))
-			lit := shadeLanes(src, lRow.Add(lX.Mul(xf)).Max(zero).Min(one))
+			lit := shadeLanes(src, lRow.Add(lX.Mul(xf)))
 			lit.IfElse(write, simd.LoadUint32s(dst[xa:xa+n])).Store(dst[xa : xa+n])
 			z.IfElse(write, zOld).Store(depth[xa : xa+n])
 			xi, xf = xi.Add(stepI), xf.Add(stepF)
@@ -146,11 +157,8 @@ func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 			v := vwRow.Add(vwX.Mul(xf)).Mul(rw)
 			tx := wrapLanes(u.Mul(twF).Abs().ConvertToInt32(), tw, twM1, invTW, pow2)
 			ty := wrapLanes(v.Mul(thF).Abs().ConvertToInt32(), th, thM1, invTH, pow2)
-			ty.Mul(tw).Add(tx).Store(idx[:n])
-			for i := range n {
-				texel[i] = pix[idx[i]]
-			}
-			lit := shadeLanes(simd.LoadUint32s(texel[:n]), lRow.Add(lX.Mul(xf)).Max(zero).Min(one))
+			texels := gatherLanes(ty.Mul(tw).Add(tx), pix, idx[:n], texel[:n])
+			lit := shadeLanes(texels, lRow.Add(lX.Mul(xf)))
 			lit.IfElse(write, simd.LoadUint32s(dst[xa:xa+n])).Store(dst[xa : xa+n])
 			z.IfElse(write, zOld).Store(depth[xa : xa+n])
 		}
