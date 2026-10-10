@@ -73,27 +73,23 @@ jobs:
           - { name: scalar, tags: simd, experiment: "" }
           - { name: simd, tags: simd, experiment: simd }
     env:
-      NAME: renderer-web-${{ matrix.build.name }}
+      NAME: renderer-js-wasm-${{ matrix.build.name }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      # Like `make web`: the model and texture are embedded in game.wasm. Serve
-      # the folder over http (workers and wasm don't load from file://).
+      # Like `make web`, with the model and texture embedded. Only the wasm is
+      # uploaded: save it as web/game.wasm, next to wasm_exec.js from the same
+      # Go version.
       - name: Build
         env:
           GOOS: js
           GOARCH: wasm
           GOEXPERIMENT: ${{ matrix.build.experiment }}
-        run: |
-          mkdir -p "dist/$NAME"
-          go build -tags="${{ matrix.build.tags }}" -trimpath -pgo=profiling/cpu.prof -o "dist/$NAME/game.wasm" ./cmd/renderer
-          cp "$(go env GOROOT)/lib/wasm/wasm_exec.js" web/index.html web/main.js web/worker.js "dist/$NAME/"
-      - name: Package
-        run: cd dist && zip -r "../$NAME.zip" "$NAME"
+        run: go build -tags="${{ matrix.build.tags }}" -trimpath -pgo=profiling/cpu.prof -o "$NAME.wasm" ./cmd/renderer
       - uses: actions/upload-artifact@v7
         with:
-          path: ${{ env.NAME }}.zip
+          path: ${{ env.NAME }}.wasm
           archive: false
           if-no-files-found: error
