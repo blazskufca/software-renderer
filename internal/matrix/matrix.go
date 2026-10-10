@@ -51,6 +51,28 @@ func (m *Mat4[T]) MulVec4(v vector.Vec4[T]) vector.Vec4[T] {
 	return result
 }
 
+// At returns the element at row, col.
+func (m *Mat4[T]) At(row, col int) T { return m.m[row][col] }
+
+// MulPoint transforms the point v (W = 1) by an affine matrix (last row 0 0 0 1),
+// skipping the W row that MulVec4 would compute.
+func (m *Mat4[T]) MulPoint(v vector.Vec3[T]) vector.Vec3[T] {
+	return vector.Vec3[T]{
+		X: m.m[0][0]*v.X + m.m[0][1]*v.Y + m.m[0][2]*v.Z + m.m[0][3],
+		Y: m.m[1][0]*v.X + m.m[1][1]*v.Y + m.m[1][2]*v.Z + m.m[1][3],
+		Z: m.m[2][0]*v.X + m.m[2][1]*v.Y + m.m[2][2]*v.Z + m.m[2][3],
+	}
+}
+
+// MulDirection transforms the direction v (W = 0), so translation is ignored.
+func (m *Mat4[T]) MulDirection(v vector.Vec3[T]) vector.Vec3[T] {
+	return vector.Vec3[T]{
+		X: m.m[0][0]*v.X + m.m[0][1]*v.Y + m.m[0][2]*v.Z,
+		Y: m.m[1][0]*v.X + m.m[1][1]*v.Y + m.m[1][2]*v.Z,
+		Z: m.m[2][0]*v.X + m.m[2][1]*v.Y + m.m[2][2]*v.Z,
+	}
+}
+
 // Mat4MakeTranslation returns a 4x4 translation matrix
 // | 0  0  0  tx |
 // | 0  0  0  ty |

@@ -25,6 +25,9 @@ type Plane[T utils.Numeric] struct {
 	normal vector.Vec3[T]
 }
 
+func (p *Plane[T]) Point() vector.Vec3[T]  { return p.point }
+func (p *Plane[T]) Normal() vector.Vec3[T] { return p.normal }
+
 // InitFrustumPlanes inits all 6 frustum planes with correct Point and normal
 // ///////////////////////////////////////////////////////////////////////////
 // Frustum planes are defined by a point and a normal vector
@@ -102,6 +105,31 @@ func (p *Polygon[T]) ClipPolygon(frustumPlanes *[6]Plane[T]) {
 	p.clipPolygonAgainstPlane(frustumPlanes, bottomFrustumPlane)
 	p.clipPolygonAgainstPlane(frustumPlanes, nearFrustumPlane)
 	p.clipPolygonAgainstPlane(frustumPlanes, farFrustumPlane)
+}
+
+// InsideAll reports whether every vertex is strictly inside all six planes, in
+// which case ClipPolygon would leave the polygon unchanged.
+func (p *Polygon[T]) InsideAll(planes *[6]Plane[T]) bool {
+	for v := range p.NumberOfVertices {
+		for i := range planes {
+			d := p.Vertices[v].Sub(planes[i].point).Dot(planes[i].normal)
+			if !(d > 0) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// Inside reports whether v is strictly inside all six planes.
+func Inside[T utils.Numeric](v vector.Vec3[T], planes *[6]Plane[T]) bool {
+	for i := range planes {
+		d := v.Sub(planes[i].point).Dot(planes[i].normal)
+		if !(d > 0) {
+			return false
+		}
+	}
+	return true
 }
 
 // clipPolygonAgainstPlane clips the polygon against plane according to Sutherland–Hodgman algorithm
