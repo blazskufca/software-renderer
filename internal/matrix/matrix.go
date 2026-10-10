@@ -55,21 +55,25 @@ func (m *Mat4[T]) MulVec4(v vector.Vec4[T]) vector.Vec4[T] {
 func (m *Mat4[T]) At(row, col int) T { return m.m[row][col] }
 
 // MulPoint transforms the point v (W = 1) by an affine matrix (last row 0 0 0 1),
-// skipping the W row that MulVec4 would compute.
+// skipping the W row that MulVec4 would compute. Each product is rounded on its
+// own (the T(...) conversions forbid fused multiply-adds, which arm64 and
+// GOAMD64=v3 would otherwise use), so the result is the same on every target
+// and matches the SIMD transform in internal/pipeline bit for bit.
 func (m *Mat4[T]) MulPoint(v vector.Vec3[T]) vector.Vec3[T] {
 	return vector.Vec3[T]{
-		X: m.m[0][0]*v.X + m.m[0][1]*v.Y + m.m[0][2]*v.Z + m.m[0][3],
-		Y: m.m[1][0]*v.X + m.m[1][1]*v.Y + m.m[1][2]*v.Z + m.m[1][3],
-		Z: m.m[2][0]*v.X + m.m[2][1]*v.Y + m.m[2][2]*v.Z + m.m[2][3],
+		X: T(m.m[0][0]*v.X) + T(m.m[0][1]*v.Y) + T(m.m[0][2]*v.Z) + m.m[0][3],
+		Y: T(m.m[1][0]*v.X) + T(m.m[1][1]*v.Y) + T(m.m[1][2]*v.Z) + m.m[1][3],
+		Z: T(m.m[2][0]*v.X) + T(m.m[2][1]*v.Y) + T(m.m[2][2]*v.Z) + m.m[2][3],
 	}
 }
 
 // MulDirection transforms the direction v (W = 0), so translation is ignored.
+// Like MulPoint, it never fuses multiply-adds.
 func (m *Mat4[T]) MulDirection(v vector.Vec3[T]) vector.Vec3[T] {
 	return vector.Vec3[T]{
-		X: m.m[0][0]*v.X + m.m[0][1]*v.Y + m.m[0][2]*v.Z,
-		Y: m.m[1][0]*v.X + m.m[1][1]*v.Y + m.m[1][2]*v.Z,
-		Z: m.m[2][0]*v.X + m.m[2][1]*v.Y + m.m[2][2]*v.Z,
+		X: T(m.m[0][0]*v.X) + T(m.m[0][1]*v.Y) + T(m.m[0][2]*v.Z),
+		Y: T(m.m[1][0]*v.X) + T(m.m[1][1]*v.Y) + T(m.m[1][2]*v.Z),
+		Z: T(m.m[2][0]*v.X) + T(m.m[2][1]*v.Y) + T(m.m[2][2]*v.Z),
 	}
 }
 

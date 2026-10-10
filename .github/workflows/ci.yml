@@ -24,6 +24,9 @@ jobs:
           go-version-file: go.mod
       # Original renderer, PR #1 with scalar kernels, PR #1 with SIMD kernels.
       - run: make test
+      # GOAMD64=v3 (like arm64) lets the compiler fuse multiply-adds; the SIMD
+      # paths must still match the scalar ones bit for bit.
+      - run: GOAMD64=v3 GOEXPERIMENT=simd go test -tags simd ./internal/...
 
   test-wasm:
     name: Test (wasm)
