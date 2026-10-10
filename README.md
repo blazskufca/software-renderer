@@ -98,6 +98,26 @@ These targets cover every build mode themselves, so `SIMD=1` is not needed.
 CI (`.github/workflows/ci.yml`) runs them, plus the native and wasm builds, on
 every pull request and push to `master`.
 
+## Benchmarking
+
+```sh
+make bench-compare                       # all three builds, all benchmarks (~12 minutes)
+BENCH=Frame ROUNDS=6 make bench-compare  # quicker: whole frames only
+```
+
+This compares the default build (master's renderer), `-tags simd` and
+`-tags simd` with `GOEXPERIMENT=simd` on the benchmarks in
+`cmd/renderer/frame_bench_test.go`: whole frames, geometry, rasterizing and
+clearing, in the default view and two close-ups. Every build runs the same
+benchmark code against the same scene, interleaved and pinned to one CPU, and
+benchstat prints medians with confidence intervals and the change against the
+default build. The `tris/frame` and `pixels/frame` rows show that all builds did
+the same work. Settings and details are at the top of
+`scripts/bench-compare.sh`; results go to `bench-results/`.
+
+`make bench` and `make bench-wasm` benchmark `internal/pipeline` alone, which
+also runs under Node.js.
+
 ## Controls
 
 Camera:

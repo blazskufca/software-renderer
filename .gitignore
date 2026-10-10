@@ -116,3 +116,6 @@ fabric.properties
 
 assets
 /coverage/
+
+# scripts/bench-compare.sh output
+bench-results/

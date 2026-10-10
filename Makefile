@@ -1,4 +1,4 @@
-.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test test-wasm cover lint bench bench-wasm
+.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test test-wasm cover lint bench bench-wasm bench-compare
 
 GOROOT := $(shell go env GOROOT)
 
@@ -110,6 +110,12 @@ bench:
 # wasm_exec aborts on a large environment, so run with a minimal one.
 bench-wasm:
 	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm $(GO_ENV) go test $(GO_TAGS) -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$$' -bench . -count 5 ./internal/pipeline/
+
+# The default build vs -tags simd vs -tags simd with SIMD kernels, on the
+# cmd/renderer frame benchmarks: interleaved, pinned to one CPU, compared with
+# benchstat (~12 minutes). Settings: see scripts/bench-compare.sh.
+bench-compare:
+	scripts/bench-compare.sh
 
 clean:
 	rm -f renderer web/game.wasm "$(PGO_PROFILE)/cpu.prof" "$(PGO_PROFILE)/mem.prof"
