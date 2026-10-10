@@ -1,4 +1,4 @@
-.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test test-wasm lint bench bench-wasm
+.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test test-wasm cover lint bench bench-wasm
 
 GOROOT := $(shell go env GOROOT)
 
@@ -72,6 +72,26 @@ test:
 test-wasm:
 	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
 	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm GOEXPERIMENT=simd go test -tags simd -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
+
+# Line coverage of the three `make test` builds, merged into coverage/coverage.out
+# (for `go tool cover -html`) and coverage/coverage.xml (Cobertura, for GitHub).
+# -coverpkg counts code run by any package's tests. Only packages with tests are
+# run; they import every other package. Running -cover on a package with no tests
+# makes go build covdata under GOEXPERIMENT=simd, which fails on some distro
+# toolchains.
+COVER_DIR := coverage
+COVER_PKGS = $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
+COVER_ARGS = -cover -coverpkg=./... $(COVER_PKGS) -args -test.gocoverdir
+
+cover:
+	rm -rf $(COVER_DIR)
+	mkdir -p $(COVER_DIR)/legacy $(COVER_DIR)/scalar $(COVER_DIR)/simd
+	go test $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/legacy
+	go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/scalar
+	GOEXPERIMENT=simd go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/simd
+	go tool covdata textfmt -i=$(COVER_DIR)/legacy,$(COVER_DIR)/scalar,$(COVER_DIR)/simd -o $(COVER_DIR)/coverage.out
+	go run ./internal/tools/cobertura < $(COVER_DIR)/coverage.out > $(COVER_DIR)/coverage.xml
+	go tool cover -func=$(COVER_DIR)/coverage.out | tail -n 1
 
 # gofmt, then vet every build: original, PR #1 scalar, PR #1 SIMD, and wasm.
 # -composites=false: the original code uses unkeyed struct literals.
