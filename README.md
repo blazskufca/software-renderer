@@ -56,6 +56,15 @@ To build a standalone binary:
 make build      # produces ./renderer
 ```
 
+The SIMD span rasterizer (`internal/raster`, `internal/pipeline`) is opt-in.
+`SIMD=1` works with every make target above and below (needs Go 1.27+):
+
+```sh
+make run SIMD=1                                     # -tags simd + GOEXPERIMENT=simd
+GOEXPERIMENT=simd go run -tags simd ./cmd/renderer  # same, directly
+go run -tags simd ./cmd/renderer                    # new rasterizer, scalar kernels
+```
+
 ## Running (WebAssembly)
 
 Build the wasm bundle and serve it (workers and wasm require `http://`, not
@@ -72,6 +81,22 @@ To only build the bundle into `web/` without serving:
 ```sh
 make web
 ```
+
+## Testing
+
+```sh
+make test       # original renderer, new rasterizer with scalar kernels, with SIMD kernels
+make test-wasm  # internal/... under js/wasm in Node.js, scalar and SIMD128 kernels
+make lint       # gofmt, then go vet for every native and wasm build
+make cover      # statement coverage of all three `make test` builds, merged
+```
+
+These targets cover every build mode themselves, so `SIMD=1` is not needed.
+`make cover` writes `coverage/coverage.out`; view it with
+`go tool cover -html=coverage/coverage.out`.
+
+CI (`.github/workflows/ci.yml`) runs them, plus the native and wasm builds, on
+every pull request and push to `master`.
 
 ## Controls
 
