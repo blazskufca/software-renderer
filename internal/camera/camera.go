@@ -10,6 +10,6 @@ type Camera[T utils.Numeric] struct {
 	Direction       vector.Vec3[T]
 	ForwardVelocity vector.Vec3[T]
 	RightVelocity   vector.Vec3[T]
-	PitchAngle      float32
+	PitchAngle      float32 // radians; positive tilts the view down
 	YawAngle        float32
 }

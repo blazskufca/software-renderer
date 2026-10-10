@@ -1,4 +1,4 @@
-.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test bench bench-wasm
+.PHONY: run build build-pgo profile web serve clean profile-mem view-mem view-cpu render-mem render-cpu test test-wasm cover lint bench bench-wasm
 
 GOROOT := $(shell go env GOROOT)
 
@@ -64,6 +64,43 @@ test:
 	go test ./...
 	go test -tags simd ./...
 	GOEXPERIMENT=simd go test -tags simd ./...
+
+# internal/... under js/wasm in Node: original geometry with scalar raster
+# kernels, then (-tags simd) the per-vertex geometry with SIMD128 kernels.
+# cmd/renderer is left out: ebiten's js backend needs a browser DOM.
+# wasm_exec aborts on a large environment, so run with a minimal one.
+test-wasm:
+	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
+	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm GOEXPERIMENT=simd go test -tags simd -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
+
+# Statement coverage of the three `make test` builds, merged into
+# coverage/coverage.out (view with `go tool cover -html=coverage/coverage.out`).
+# -coverpkg counts code run by any package's tests. Only packages with tests are
+# run; they import every other package. Running -cover on a package with no tests
+# makes go build covdata under GOEXPERIMENT=simd, which fails on some distro
+# toolchains.
+COVER_DIR := coverage
+COVER_PKGS = $(shell go list -f '{{if or .TestGoFiles .XTestGoFiles}}{{.ImportPath}}{{end}}' ./...)
+COVER_ARGS = -cover -coverpkg=./... $(COVER_PKGS) -args -test.gocoverdir
+
+cover:
+	rm -rf $(COVER_DIR)
+	mkdir -p $(COVER_DIR)/legacy $(COVER_DIR)/scalar $(COVER_DIR)/simd
+	go test $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/legacy
+	go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/scalar
+	GOEXPERIMENT=simd go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/simd
+	go tool covdata textfmt -i=$(COVER_DIR)/legacy,$(COVER_DIR)/scalar,$(COVER_DIR)/simd -o $(COVER_DIR)/coverage.out
+	go tool cover -func=$(COVER_DIR)/coverage.out | tail -n 1
+
+# gofmt, then vet every build: original, PR #1 scalar, PR #1 SIMD, and wasm.
+# -composites=false: the original code uses unkeyed struct literals.
+lint:
+	@unformatted="$$(gofmt -l .)"; if [ -n "$$unformatted" ]; then echo "gofmt needed:"; echo "$$unformatted"; exit 1; fi
+	go vet -composites=false ./...
+	go vet -composites=false -tags simd ./...
+	GOEXPERIMENT=simd go vet -composites=false -tags simd ./...
+	GOOS=js GOARCH=wasm go vet -composites=false ./...
+	GOOS=js GOARCH=wasm GOEXPERIMENT=simd go vet -composites=false -tags simd ./...
 
 # internal/pipeline always uses the new rasterizer; SIMD=1 picks the SIMD kernels
 # and the per-vertex geometry (otherwise it's master's per-face loop).
