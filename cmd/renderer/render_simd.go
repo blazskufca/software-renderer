@@ -82,9 +82,13 @@ func (r *Renderer[T]) clearBuffers() {
 	r.target.Clear(0xFF000000)
 }
 
+// drawPixel, drawFilledTriangle and drawTexturedTriangle write the target's
+// buffers directly, so they mark what they touch for the next Clear, which
+// only resets drawn areas.
 func (r *Renderer[T]) drawPixel(x, y int, color uint32) {
 	if x >= 0 && y >= 0 && x < r.target.Width && y < r.target.Height {
 		r.target.Color[y*r.target.Width+x] = color
+		r.target.MarkDirty(x, y, x, y)
 	}
 }
 
@@ -118,6 +122,7 @@ func (r *Renderer[T]) update() {
 }
 
 func (r *Renderer[T]) drawFilledTriangle(tri *raster.Triangle) {
+	r.target.MarkAllDirty() // rarely used, so not worth a tighter bound
 	// Snap screen coords to integers, like the C reference (keep w as float for depth)
 	x0, y0 := int(tri.V[0].X), int(tri.V[0].Y)
 	x1, y1 := int(tri.V[1].X), int(tri.V[1].Y)
@@ -217,6 +222,7 @@ func (r *Renderer[T]) drawTrianglePixel(x, y int, color uint32, a, b, c vector.V
 }
 
 func (r *Renderer[T]) drawTexturedTriangle(tri *raster.Triangle) {
+	r.target.MarkAllDirty()
 	t := tri.Texture
 	ix0, iy0 := int(tri.V[0].X), int(tri.V[0].Y)
 	ix1, iy1 := int(tri.V[1].X), int(tri.V[1].Y)

@@ -121,10 +121,13 @@ func (p *Polygon[T]) InsideAll(planes *[6]Plane[T]) bool {
 	return true
 }
 
-// Inside reports whether v is strictly inside all six planes.
+// Inside reports whether v is strictly inside all six planes. Each product is
+// rounded on its own (no fused multiply-add), so it agrees bit for bit with the
+// SIMD frustum test in internal/pipeline on every target.
 func Inside[T utils.Numeric](v vector.Vec3[T], planes *[6]Plane[T]) bool {
 	for i := range planes {
-		d := v.Sub(planes[i].point).Dot(planes[i].normal)
+		p, n := planes[i].point, planes[i].normal
+		d := T((v.X-p.X)*n.X) + T((v.Y-p.Y)*n.Y) + T((v.Z-p.Z)*n.Z)
 		if !(d > 0) {
 			return false
 		}

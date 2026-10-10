@@ -1,0 +1,95 @@
+name: Build
+
+# Manual builds of the app for every major platform and the web, each in the
+# three builds that `make test` covers: the original renderer (no tags), the
+# new renderer with scalar kernels (-tags simd), and the new renderer with SIMD
+# kernels (-tags simd with GOEXPERIMENT=simd).
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: ${{ matrix.platform.os }}-${{ matrix.platform.arch }} (${{ matrix.build.name }})
+    runs-on: ${{ matrix.platform.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Native runners, so each binary is built the way `go build` builds it there.
+        platform:
+          - { os: linux, arch: amd64, runner: ubuntu-latest }
+          - { os: linux, arch: arm64, runner: ubuntu-24.04-arm }
+          - { os: darwin, arch: amd64, runner: macos-15-intel }
+          - { os: darwin, arch: arm64, runner: macos-latest }
+          - { os: windows, arch: amd64, runner: windows-latest }
+          - { os: windows, arch: arm64, runner: windows-11-arm }
+        build:
+          - { name: default, tags: "", experiment: "" }
+          - { name: scalar, tags: simd, experiment: "" }
+          - { name: simd, tags: simd, experiment: simd }
+    env:
+      NAME: renderer-${{ matrix.platform.os }}-${{ matrix.platform.arch }}-${{ matrix.build.name }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Build
+        env:
+          GOEXPERIMENT: ${{ matrix.build.experiment }}
+        run: |
+          mkdir -p "dist/$NAME/assets"
+          go build -tags="${{ matrix.build.tags }}" -trimpath -o "dist/$NAME/renderer$(go env GOEXE)" ./cmd/renderer
+          # The native app loads its model and texture from ./assets at run time.
+          cp assets/race.obj assets/colormap.png "dist/$NAME/assets/"
+      # Archived here rather than by upload-artifact, which would drop the
+      # executable bit.
+      - name: Package
+        if: runner.os != 'Windows'
+        run: tar -czf "$NAME.tar.gz" -C dist "$NAME"
+      - name: Package
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path "dist/$env:NAME" -DestinationPath "$env:NAME.zip"
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.NAME }}.${{ runner.os == 'Windows' && 'zip' || 'tar.gz' }}
+          archive: false
+          if-no-files-found: error
+
+  web:
+    name: js-wasm (${{ matrix.build.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build:
+          - { name: default, tags: "", experiment: "" }
+          - { name: scalar, tags: simd, experiment: "" }
+          - { name: simd, tags: simd, experiment: simd }
+    env:
+      NAME: renderer-js-wasm-${{ matrix.build.name }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # Like `make web`, with the model and texture embedded. Only the wasm is
+      # uploaded: save it as web/game.wasm, next to wasm_exec.js from the same
+      # Go version.
+      - name: Build
+        env:
+          GOOS: js
+          GOARCH: wasm
+          GOEXPERIMENT: ${{ matrix.build.experiment }}
+        run: go build -tags="${{ matrix.build.tags }}" -trimpath -pgo=profiling/cpu.prof -o "$NAME.wasm" ./cmd/renderer
+      - uses: actions/upload-artifact@v7
+        with:
+          path: ${{ env.NAME }}.wasm
+          archive: false
+          if-no-files-found: error

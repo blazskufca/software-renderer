@@ -40,3 +40,39 @@ func TestBytesAreRGBAView(t *testing.T) {
 		t.Fatalf("Bytes()[12:16] = % x after Color write, want aa bb cc dd", got)
 	}
 }
+
+// TestClearResetsEverythingDrawn checks that Clear, which only resets the area
+// drawn since the previous Clear, still leaves the whole target cleared.
+func TestClearResetsEverythingDrawn(t *testing.T) {
+	tg, err := NewTarget(64, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleared := func(step string, color uint32) {
+		t.Helper()
+		for i := range tg.Color {
+			if tg.Color[i] != color || tg.Depth[i] != 1 {
+				t.Fatalf("%s: pixel (%d,%d) = %#08x/%v, want %#08x/1", step, i%64, i/64, tg.Color[i], tg.Depth[i], color)
+			}
+		}
+	}
+	tg.Clear(0xFF000000)
+	cleared("first clear", 0xFF000000)
+
+	// two triangles far apart, so the dirty area spans both
+	for _, off := range []float32{2, 40} {
+		tg.FillTriangle(&Triangle{Color: 0xFFFFFFFF, V: [3]Vertex{
+			{X: off, Y: off - 2, W: 2, Light: 1}, {X: off + 20, Y: off, W: 2, Light: 1}, {X: off, Y: off + 6, W: 2, Light: 1},
+		}})
+	}
+	tg.Clear(0xFF000000)
+	cleared("after triangles", 0xFF000000)
+
+	tg.Color[5*64+60], tg.Depth[5*64+60] = 0xFF00FF00, 0.5
+	tg.MarkDirty(60, 5, 60, 5)
+	tg.Clear(0xFF000000)
+	cleared("after MarkDirty", 0xFF000000)
+
+	tg.Clear(0xFF123456) // a new color must reach every pixel, drawn or not
+	cleared("new color", 0xFF123456)
+}

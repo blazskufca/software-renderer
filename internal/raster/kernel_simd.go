@@ -12,16 +12,29 @@ var laneIndex = [maxLanes]int32{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14
 
 func useSIMD() bool { return !simd.Emulated() && simd.VectorBitSize() <= 32*maxLanes }
 
+// lanes is the float32 vector width.
+var lanes = simd.VectorBitSize() / 32
+
+// narrow reports whether every row of the triangle fits in one vector. The
+// default view is mostly such triangles, a few pixels wide.
+func narrow(s *triSetup) bool { return s.xMax-s.xMin < lanes }
+
 func fillRows(t *Target, s *triSetup, color uint32) {
-	if useSIMD() {
+	switch {
+	case !useSIMD():
+		fillRowsScalar(t, s, color)
+	case narrow(s):
+		fillNarrowSIMD(t, s, color)
+	default:
 		fillRowsSIMD(t, s, color)
-		return
 	}
-	fillRowsScalar(t, s, color)
 }
 
+// Narrow textured triangles stay scalar: a vector kernel pays a full texel
+// gather per row (through memory, see gatherMemory) for a few covered pixels,
+// which measured 10% slower in the default view than the scalar loop.
 func textureRows(t *Target, s *triSetup, tex *mesh.TextureData) {
-	if useSIMD() {
+	if useSIMD() && !narrow(s) {
 		textureRowsSIMD(t, s, tex)
 		return
 	}
@@ -69,7 +82,6 @@ func anyLaneMemory(m simd.Mask32s, buf []int32) bool {
 }
 
 func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
-	edges := s.edges
 	var probe simd.Float32s
 	n := probe.Len()
 	lane := simd.LoadInt32s(laneIndex[:n])
@@ -79,7 +91,7 @@ func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
 	zero := one.Sub(one)
 	yf := zero
 	for y := s.yMin; y <= s.yMax; y, yf = y+1, yf.Add(one) {
-		lo, hi := edges.next(s.xMin, s.xMax)
+		lo, hi := s.edges.next(s.xMin, s.xMax)
 		if lo > hi {
 			continue
 		}
@@ -109,7 +121,6 @@ func fillRowsSIMD(t *Target, s *triSetup, color uint32) {
 }
 
 func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
-	edges := s.edges
 	pow2 := isPow2(tex.Width) && isPow2(tex.Height)
 	var idx, hit [maxLanes]int32
 	var texel [maxLanes]uint32
@@ -127,7 +138,7 @@ func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 	pix := tex.PixelData
 	yf := zero
 	for y := s.yMin; y <= s.yMax; y, yf = y+1, yf.Add(one) {
-		lo, hi := edges.next(s.xMin, s.xMax)
+		lo, hi := s.edges.next(s.xMin, s.xMax)
 		if lo > hi {
 			continue
 		}
@@ -162,6 +173,47 @@ func textureRowsSIMD(t *Target, s *triSetup, tex *mesh.TextureData) {
 			lit.IfElse(write, simd.LoadUint32s(dst[xa:xa+n])).Store(dst[xa : xa+n])
 			z.IfElse(write, zOld).Store(depth[xa : xa+n])
 		}
+	}
+	clearUpperBits()
+}
+
+// narrowChunk returns the x of the one chunk that holds every row of a narrow
+// triangle, and each lane's edge function values for the triangle's first row.
+// Coverage comes from the edge functions instead of the span walk: one vector
+// add per edge and row, and no per-row bookkeeping.
+func narrowChunk(t *Target, s *triSetup, n int) (xa int, x simd.Int32s, e0, e1, e2 simd.Int32s) {
+	xa = min(s.xMin, t.Width-n) // Width is a multiple of every n, so the chunk stays in the row
+	x = simd.LoadInt32s(laneIndex[:n]).Add(simd.BroadcastInt32s(int32(xa - s.xMin)))
+	e0 = simd.BroadcastInt32s(s.edgeDx[0]).Mul(x).Add(simd.BroadcastInt32s(s.edge[0]))
+	e1 = simd.BroadcastInt32s(s.edgeDx[1]).Mul(x).Add(simd.BroadcastInt32s(s.edge[1]))
+	e2 = simd.BroadcastInt32s(s.edgeDx[2]).Mul(x).Add(simd.BroadcastInt32s(s.edge[2]))
+	return
+}
+
+// fillNarrowSIMD is fillRowsSIMD for triangles narrower than a vector.
+func fillNarrowSIMD(t *Target, s *triSetup, color uint32) {
+	var probe simd.Float32s
+	n := probe.Len()
+	xa, x, e0, e1, e2 := narrowChunk(t, s, n)
+	xf := x.ConvertToFloat32()
+	zeroI := x.Sub(x)
+	one := simd.BroadcastInt32s(1).ConvertToFloat32()
+	yf := one.Sub(one)
+	for y := s.yMin; y <= s.yMax; y, yf = y+1, yf.Add(one) {
+		covered := e0.Or(e1).Or(e2).GreaterEqual(zeroI) // all three edge values >= 0
+		e0 = e0.Add(simd.BroadcastInt32s(s.edgeDy[0]))
+		e1 = e1.Add(simd.BroadcastInt32s(s.edgeDy[1]))
+		e2 = e2.Add(simd.BroadcastInt32s(s.edgeDy[2]))
+		iwRow := simd.BroadcastFloat32s(s.invW.dy).Mul(yf).Add(simd.BroadcastFloat32s(s.invW.base))
+		lRow := simd.BroadcastFloat32s(s.light.dy).Mul(yf).Add(simd.BroadcastFloat32s(s.light.base))
+		row := y*t.Width + xa
+		dst, depth := t.Color[row:row+n], t.Depth[row:row+n]
+		z := one.Sub(iwRow.Add(simd.BroadcastFloat32s(s.invW.dx).Mul(xf)))
+		zOld := simd.LoadFloat32s(depth)
+		write := covered.And(z.Less(zOld))
+		lit := shadeLanes(simd.BroadcastUint32s(color), lRow.Add(simd.BroadcastFloat32s(s.light.dx).Mul(xf)))
+		lit.IfElse(write, simd.LoadUint32s(dst)).Store(dst)
+		z.IfElse(write, zOld).Store(depth)
 	}
 	clearUpperBits()
 }

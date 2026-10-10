@@ -152,14 +152,18 @@ func AppendMesh[T utils.Numeric](dst []raster.Triangle, m *mesh.Mesh[T], p *Para
 }
 
 // project maps a view-space point to screen pixels, keeping view depth in W.
+// It is Mat4MulVec4Project with W = 1 and then the viewport transform, in the
+// same order as transformVertices32 and with every product rounded on its own
+// (no fused multiply-add), so the two agree bit for bit.
 func project[T utils.Numeric](proj *matrix.Mat4[T], v vector.Vec3[T], halfW, halfH T) screenVertex {
-	pp := proj.Mat4MulVec4Project(v.ToVec4())
-	pp.X *= halfW
-	pp.Y *= halfH
-	pp.Y *= -1
-	pp.X += halfW
-	pp.Y += halfH
-	return screenVertex{X: float32(pp.X), Y: float32(pp.Y), W: float32(pp.W)}
+	x := T(proj.At(0, 0)*v.X) + T(proj.At(0, 1)*v.Y) + T(proj.At(0, 2)*v.Z) + proj.At(0, 3)
+	y := T(proj.At(1, 0)*v.X) + T(proj.At(1, 1)*v.Y) + T(proj.At(1, 2)*v.Z) + proj.At(1, 3)
+	w := T(proj.At(3, 0)*v.X) + T(proj.At(3, 1)*v.Y) + T(proj.At(3, 2)*v.Z) + proj.At(3, 3)
+	if w != 0 {
+		x /= w
+		y /= w
+	}
+	return screenVertex{X: float32(T(x*halfW) + halfW), Y: float32(-T(y*halfH) + halfH), W: float32(w)}
 }
 
 // setVertex writes v field by field. Building a raster.Vertex (or Triangle)
@@ -178,8 +182,8 @@ func shadeFace[T utils.Numeric](fd *faceData[T], i int, face *mesh.Face[T], vd *
 
 	// Edge lengths change neither the sign of the cull test nor the unit
 	// normal, so the edges stay unnormalized.
-	normal := b.Sub(a).Cross(c.Sub(a))
-	if p.Cull == config.CULL_BACKFACE && normal.Dot(vector.Vec3[T]{}.Sub(a)) < 0 {
+	normal := cross(b.Sub(a), c.Sub(a))
+	if p.Cull == config.CULL_BACKFACE && dot(normal, vector.Vec3[T]{}.Sub(a)) < 0 {
 		fd.keep[i] = 0
 		return
 	}
@@ -193,7 +197,7 @@ func shadeFace[T utils.Numeric](fd *faceData[T], i int, face *mesh.Face[T], vd *
 	for j, vn := range [3]vector.Vec3[T]{face.ANormal, face.BNormal, face.CNormal} {
 		tn := world.MulDirection(vn)
 		if l := length(tn); l != 0 {
-			fd.light[j][i] = -tn.Dot(p.Light.Direction) / l
+			fd.light[j][i] = -dot(tn, p.Light.Direction) / l
 		} else {
 			fd.light[j][i] = flatLight(normal, p.Light.Direction)
 		}
@@ -204,11 +208,27 @@ func shadeFace[T utils.Numeric](fd *faceData[T], i int, face *mesh.Face[T], vd *
 func flatLight[T utils.Numeric](n, lightDir vector.Vec3[T]) T {
 	l := length(n)
 	n = vector.Vec3[T]{X: n.X / l, Y: n.Y / l, Z: n.Z / l}
-	return -n.Dot(lightDir)
+	return -dot(n, lightDir)
 }
 
 // length sums the squares in T rather than float64 (unlike Vec3.Length), so
 // for float32 it matches the SIMD path's vector square root bit for bit.
 func length[T utils.Numeric](v vector.Vec3[T]) T {
-	return T(math.Sqrt(float64(v.Dot(v))))
+	return T(math.Sqrt(float64(dot(v, v))))
+}
+
+// dot and cross are Vec3.Dot and Vec3.Cross with every product rounded on its
+// own. The T(...) conversions forbid fusing them into multiply-adds, which the
+// compiler does on arm64 and with GOAMD64=v3; the SIMD path never fuses, so
+// without them the two paths disagree in the last bit on those targets.
+func dot[T utils.Numeric](a, b vector.Vec3[T]) T {
+	return T(a.X*b.X) + T(a.Y*b.Y) + T(a.Z*b.Z)
+}
+
+func cross[T utils.Numeric](a, b vector.Vec3[T]) vector.Vec3[T] {
+	return vector.Vec3[T]{
+		X: T(a.Y*b.Z) - T(a.Z*b.Y),
+		Y: T(a.Z*b.X) - T(a.X*b.Z),
+		Z: T(a.X*b.Y) - T(a.Y*b.X),
+	}
 }
