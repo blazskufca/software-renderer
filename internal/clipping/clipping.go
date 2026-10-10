@@ -96,9 +96,6 @@ func NewPolyFromTriangle[T utils.Numeric](vertices *[3]vector.Vec4[T], uvs *[3]t
 
 // ClipPolygon clips the polygon against all six planes with Sutherland–Hodgman algorithm
 func (p *Polygon[T]) ClipPolygon(frustumPlanes *[6]Plane[T]) {
-	if p.insideAll(frustumPlanes) {
-		return
-	}
 	p.clipPolygonAgainstPlane(frustumPlanes, leftFrustumPlane)
 	p.clipPolygonAgainstPlane(frustumPlanes, rightFrustumPlane)
 	p.clipPolygonAgainstPlane(frustumPlanes, topFrustumPlane)
@@ -107,7 +104,9 @@ func (p *Polygon[T]) ClipPolygon(frustumPlanes *[6]Plane[T]) {
 	p.clipPolygonAgainstPlane(frustumPlanes, farFrustumPlane)
 }
 
-func (p *Polygon[T]) insideAll(planes *[6]Plane[T]) bool {
+// InsideAll reports whether every vertex is strictly inside all six planes, in
+// which case ClipPolygon would leave the polygon unchanged.
+func (p *Polygon[T]) InsideAll(planes *[6]Plane[T]) bool {
 	for v := range p.NumberOfVertices {
 		for i := range planes {
 			d := p.Vertices[v].Sub(planes[i].point).Dot(planes[i].normal)

@@ -72,7 +72,9 @@ func AppendMesh[T utils.Numeric](dst []raster.Triangle, m *mesh.Mesh[T], p *Para
 		}
 
 		poly := clipping.NewPolyFromTriangle(&transformed, &[3]texture.Tex2[T]{face.AUV, face.BUV, face.CUV}, &intensities)
-		poly.ClipPolygon(&p.Frustum)
+		if !poly.InsideAll(&p.Frustum) {
+			poly.ClipPolygon(&p.Frustum)
+		}
 
 		for t := range poly.NumberOfVertices - 2 {
 			tri := raster.Triangle{Color: face.Color, Texture: &m.Texture}

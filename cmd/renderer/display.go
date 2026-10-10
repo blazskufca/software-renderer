@@ -30,12 +30,6 @@ func (r *Renderer[T]) drawRectangle(x, y, w, h int, color uint32) {
 	}
 }
 
-func (r *Renderer[T]) drawPixel(x, y int, color uint32) {
-	if x >= 0 && y >= 0 && x < r.target.Width && y < r.target.Height {
-		r.target.Color[y*r.target.Width+x] = color
-	}
-}
-
 // drawLine implements a DDA algorithm for drawing lines
 func (r *Renderer[T]) drawLine(x0, y0, x1, y1 int, color uint32) {
 	deltaX := x1 - x0

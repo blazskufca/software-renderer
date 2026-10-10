@@ -16,8 +16,6 @@ import (
 	mesh "github.com/blazskufca/software-renderer/internal/face"
 	"github.com/blazskufca/software-renderer/internal/light"
 	"github.com/blazskufca/software-renderer/internal/matrix"
-	"github.com/blazskufca/software-renderer/internal/pipeline"
-	"github.com/blazskufca/software-renderer/internal/raster"
 	"github.com/blazskufca/software-renderer/internal/texture"
 	"github.com/blazskufca/software-renderer/internal/utils"
 	"github.com/blazskufca/software-renderer/internal/vector"
@@ -45,12 +43,11 @@ type Config struct {
 }
 
 type Renderer[T utils.Numeric] struct {
+	rasterState[T]    // render_legacy.go, or render_simd.go with -tags simd
 	config            Config
-	target            *raster.Target
 	frustumPlanes     [6]clipping.Plane[T]
 	projectionMatrix  matrix.Mat4[T]
 	meshes            []*mesh.Mesh[T]
-	trianglesToDraw   []raster.Triangle
 	renderMethod      config.RenderMode
 	cullMode          config.CullMode
 	previousFrameTime time.Time
@@ -85,8 +82,8 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 	renderer.config.AspectRatioX = float64(renderer.config.WindowWidth) / float64(renderer.config.WindowHeight)
 	renderer.config.FovX = 2 * (math.Atan(math.Tan(renderer.config.FovY/2) * renderer.config.AspectRatioX))
 	renderer.cullMode = config.CULL_BACKFACE
-	renderer.textureRasterMode = config.TEXTURE_PINEDA
-	renderer.fillRasterMode = config.FILL_PINEDA
+	renderer.setTextureRaster(config.TEXTURE_PINEDA)
+	renderer.setFillRaster(config.FILL_PINEDA)
 	renderer.renderMethod = config.RENDER_TEXTURED
 	renderer.shadingMode = config.SHADING_GOURAUD
 	renderer.light = light.Light[T]{Direction: vector.Vec3[T]{X: -1, Y: -1, Z: 1}}
@@ -100,12 +97,9 @@ func NewRenderer[T utils.Numeric](opts ...RendererOpts[T]) *Renderer[T] {
 
 func (r *Renderer[T]) Setup() error {
 	r.initializeWindow()
-	target, err := raster.NewTarget(r.config.WindowWidth, r.config.WindowHeight)
-	if err != nil {
+	if err := r.initBuffers(); err != nil {
 		return err
 	}
-	r.target = target
-	r.target.Clear(0xFF000000)
 
 	// Initialize the perspective projection matrix
 	m := matrix.Mat4MakePerspective[T, T](T(r.config.FovY), T(r.config.AspectRatioY), T(r.config.ZNear), T(r.config.ZFar))
@@ -138,37 +132,8 @@ func (r *Renderer[T]) Setup() error {
 }
 
 func (r *Renderer[T]) Draw(screen *ebiten.Image) {
-	for i := range r.trianglesToDraw {
-		tri := &r.trianglesToDraw[i]
-		if r.renderMethod == config.RENDER_FILL_TRIANGLE || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE {
-			if r.fillRasterMode == config.FILL_PINEDA {
-				r.target.FillTriangle(tri)
-			} else {
-				r.drawFilledTriangle(tri)
-			}
-		}
-
-		if r.renderMethod == config.RENDER_TEXTURED || r.renderMethod == config.RENDER_TEXTURED_WIRE {
-			if r.textureRasterMode == config.TEXTURE_PINEDA {
-				r.target.TextureTriangle(tri)
-			} else {
-				r.drawTexturedTriangle(tri)
-			}
-		}
-
-		if r.renderMethod == config.RENDER_WIRE || r.renderMethod == config.RENDER_WIRE_VERTEX || r.renderMethod == config.RENDER_FILL_TRIANGLE_WIRE || r.renderMethod == config.RENDER_TEXTURED_WIRE {
-			r.drawTriangle(int(tri.V[0].X), int(tri.V[0].Y),
-				int(tri.V[1].X), int(tri.V[1].Y),
-				int(tri.V[2].X), int(tri.V[2].Y), 0xFFFFFFFF)
-		}
-		if r.renderMethod == config.RENDER_WIRE_VERTEX {
-			r.drawRectangle(int(tri.V[0].X)-3, int(tri.V[0].Y)-3, 6, 6, 0xFFFFFF00)
-			r.drawRectangle(int(tri.V[1].X)-3, int(tri.V[1].Y)-3, 6, 6, 0xFFFFFF00)
-			r.drawRectangle(int(tri.V[2].X)-3, int(tri.V[2].Y)-3, 6, 6, 0xFFFFFF00)
-		}
-
-	}
-	screen.WritePixels(r.target.Bytes())
+	r.drawTriangles()
+	r.renderColorBuffer(screen)
 	r.drawRenderModeToolbar(screen)
 	r.drawMovementButtons(screen)
 	// Overlay the FPS counter on top of the rendered frame
@@ -176,7 +141,7 @@ func (r *Renderer[T]) Draw(screen *ebiten.Image) {
 		"FPS: %.1f, TPS: %.1f\nTriangles: %d",
 		ebiten.ActualFPS(), ebiten.ActualTPS(), len(r.trianglesToDraw)),
 		8, r.renderModeToolbarHeight()+8)
-	r.target.Clear(0xFF000000)
+	r.clearBuffers()
 }
 
 // Layout reports the renderer's internal resolution; ebiten scales this to the
@@ -192,38 +157,6 @@ func (r *Renderer[T]) Layout(outsideWidth, outsideHeight int) (int, int) {
 //	projectedPoint = vec2{X: int((point.X * fovFactor) / point.Z), Y: int(point.Y * fovFactor / point.Z)}
 //	return projectedPoint
 //}
-
-func (r *Renderer[T]) update() {
-	// ebiten drives the frame pacing (fixed TPS), so we no longer sleep here;
-	// deltaTime is measured in Update, before input is processed.
-	r.trianglesToDraw = r.trianglesToDraw[:0]
-
-	view, dir := pipeline.ViewMatrix(r.camera.Position, r.camera.YawAngle, r.camera.PitchAngle)
-	r.camera.Direction = dir
-	params := pipeline.Params[T]{
-		View:       view,
-		Projection: r.projectionMatrix,
-		Frustum:    r.frustumPlanes,
-		Light:      r.light,
-		Shading:    r.shadingMode,
-		Cull:       r.cullMode,
-		Width:      r.config.WindowWidth,
-		Height:     r.config.WindowHeight,
-	}
-
-	for _, currentMesh := range r.meshes {
-		if currentMesh == nil {
-			panic("nil currentMesh")
-		}
-		for _, mutation := range currentMesh.PerFrameMutations {
-			err := mutation(currentMesh)
-			if err != nil {
-				panic(err)
-			}
-		}
-		r.trianglesToDraw = pipeline.AppendMesh(r.trianglesToDraw, currentMesh, &params)
-	}
-}
 
 // Camera movement primitives. These are shared by the keyboard handlers and the
 // on-screen navigation buttons so both paths behave identically. Each applies one
@@ -334,16 +267,16 @@ func (r *Renderer[T]) processInput() (quit bool) {
 		r.renderMethod = config.RENDER_TEXTURED_WIRE
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key7) {
-		r.fillRasterMode = config.FILL_SCANLINE
+		r.setFillRaster(config.FILL_SCANLINE)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key8) {
-		r.fillRasterMode = config.FILL_PINEDA
+		r.setFillRaster(config.FILL_PINEDA)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.Key9) {
-		r.textureRasterMode = config.TEXTURE_SCANLINE
+		r.setTextureRaster(config.TEXTURE_SCANLINE)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyDigit0) {
-		r.textureRasterMode = config.TEXTURE_PINEDA
+		r.setTextureRaster(config.TEXTURE_PINEDA)
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyC) {
 		r.cullMode = config.CULL_BACKFACE

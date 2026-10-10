@@ -134,22 +134,22 @@ func (r *Renderer[T]) buildUIButtons() []uiButton {
 		{
 			label:    "7 Fill SL",
 			isActive: func() bool { return r.fillRasterMode == config.FILL_SCANLINE },
-			action:   func() { r.fillRasterMode = config.FILL_SCANLINE },
+			action:   func() { r.setFillRaster(config.FILL_SCANLINE) },
 		},
 		{
 			label:    "8 Fill Pineda",
 			isActive: func() bool { return r.fillRasterMode == config.FILL_PINEDA },
-			action:   func() { r.fillRasterMode = config.FILL_PINEDA },
+			action:   func() { r.setFillRaster(config.FILL_PINEDA) },
 		},
 		{
 			label:    "9 Tex SL",
 			isActive: func() bool { return r.textureRasterMode == config.TEXTURE_SCANLINE },
-			action:   func() { r.textureRasterMode = config.TEXTURE_SCANLINE },
+			action:   func() { r.setTextureRaster(config.TEXTURE_SCANLINE) },
 		},
 		{
 			label:    "0 Tex Pineda",
 			isActive: func() bool { return r.textureRasterMode == config.TEXTURE_PINEDA },
-			action:   func() { r.textureRasterMode = config.TEXTURE_PINEDA },
+			action:   func() { r.setTextureRaster(config.TEXTURE_PINEDA) },
 		},
 		{
 			label:    "C Cull",

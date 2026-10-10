@@ -4,23 +4,29 @@ GOROOT := $(shell go env GOROOT)
 
 PGO_PROFILE := profiling
 
-# Portable SIMD (Go 1.27+). `make <target> SIMD=` builds the scalar version.
-SIMD ?= GOEXPERIMENT=simd
+# The PR #1 renderer (internal/pipeline + internal/raster) is opt-in:
+# `make <target> SIMD=1` builds with `-tags simd` and GOEXPERIMENT=simd (Go 1.27+).
+# Without it you get the original renderer. `go build -tags simd` alone gives the
+# new renderer with scalar raster kernels.
+ifdef SIMD
+GO_ENV := GOEXPERIMENT=simd
+GO_TAGS := -tags simd
+endif
 
 # Run the native (desktop) build.
 run:
-	$(SIMD) go run ./cmd/renderer
+	$(GO_ENV) go run $(GO_TAGS) ./cmd/renderer
 
 # Build the native binary.
 build:
-	$(SIMD) go build -o renderer ./cmd/renderer
+	$(GO_ENV) go build $(GO_TAGS) -o renderer ./cmd/renderer
 
 profile:
-	$(SIMD) go run ./cmd/renderer -cpuprofile "$(PGO_PROFILE)/cpu.prof"
+	$(GO_ENV) go run $(GO_TAGS) ./cmd/renderer -cpuprofile "$(PGO_PROFILE)/cpu.prof"
 	@echo "Wrote $(PGO_PROFILE) — now run 'make build-pgo'"
 
 profile-mem:
-	$(SIMD) go run ./cmd/renderer -memprofile "$(PGO_PROFILE)/mem.prof"
+	$(GO_ENV) go run $(GO_TAGS) ./cmd/renderer -memprofile "$(PGO_PROFILE)/mem.prof"
 
 view-mem:
 	go tool pprof -http=:6061 "$(PGO_PROFILE)/mem.prof"
@@ -40,11 +46,11 @@ render-cpu:
 
 build-pgo:
 	@test -f "$(PGO_PROFILE)/cpu.prof" || { echo "missing "$(PGO_PROFILE)/cpu.prof" — run 'make profile' first"; exit 1; }
-	$(SIMD) go build "-pgo=$(PGO_PROFILE)/cpu.prof" -o renderer ./cmd/renderer
+	$(GO_ENV) go build $(GO_TAGS) "-pgo=$(PGO_PROFILE)/cpu.prof" -o renderer ./cmd/renderer
 
 # Build the WebAssembly bundle into web/ (game.wasm + wasm_exec.js.old).
 web:
-	GOOS=js GOARCH=wasm $(SIMD) go build -pgo="$(PGO_PROFILE)/cpu.prof" -o web/game.wasm ./cmd/renderer
+	GOOS=js GOARCH=wasm $(GO_ENV) go build $(GO_TAGS) -pgo="$(PGO_PROFILE)/cpu.prof" -o web/game.wasm ./cmd/renderer
 	cp "$(GOROOT)/lib/wasm/wasm_exec.js" web/
 	@echo "Built web/game.wasm ($$(du -h web/game.wasm | cut -f1))"
 
@@ -53,16 +59,19 @@ serve: web
 	@echo "Serving http://localhost:8081  (Ctrl-C to stop)"
 	cd web && python3 -m http.server 8081
 
+# Every renderer/kernel combination: original, PR #1 scalar, PR #1 SIMD.
 test:
 	go test ./...
-	GOEXPERIMENT=simd go test ./...
+	go test -tags simd ./...
+	GOEXPERIMENT=simd go test -tags simd ./...
 
+# internal/pipeline always uses the new rasterizer; SIMD=1 picks the SIMD kernels.
 bench:
-	$(SIMD) go test -run '^$$' -bench . -count 5 ./internal/pipeline/
+	$(GO_ENV) go test -run '^$$' -bench . -count 5 ./internal/pipeline/
 
 # wasm_exec aborts on a large environment, so run with a minimal one.
 bench-wasm:
-	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm $(SIMD) go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$$' -bench . -count 5 ./internal/pipeline/
+	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm $(GO_ENV) go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$$' -bench . -count 5 ./internal/pipeline/
 
 clean:
 	rm -f renderer web/game.wasm "$(PGO_PROFILE)/cpu.prof" "$(PGO_PROFILE)/mem.prof"
