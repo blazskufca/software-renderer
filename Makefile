@@ -73,8 +73,8 @@ test-wasm:
 	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
 	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm GOEXPERIMENT=simd go test -tags simd -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" ./internal/...
 
-# Line coverage of the three `make test` builds, merged into coverage/coverage.out
-# (for `go tool cover -html`) and coverage/coverage.xml (Cobertura, for GitHub).
+# Statement coverage of the three `make test` builds, merged into
+# coverage/coverage.out (view with `go tool cover -html=coverage/coverage.out`).
 # -coverpkg counts code run by any package's tests. Only packages with tests are
 # run; they import every other package. Running -cover on a package with no tests
 # makes go build covdata under GOEXPERIMENT=simd, which fails on some distro
@@ -90,7 +90,6 @@ cover:
 	go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/scalar
 	GOEXPERIMENT=simd go test -tags simd $(COVER_ARGS)=$(CURDIR)/$(COVER_DIR)/simd
 	go tool covdata textfmt -i=$(COVER_DIR)/legacy,$(COVER_DIR)/scalar,$(COVER_DIR)/simd -o $(COVER_DIR)/coverage.out
-	go run ./internal/tools/cobertura < $(COVER_DIR)/coverage.out > $(COVER_DIR)/coverage.xml
 	go tool cover -func=$(COVER_DIR)/coverage.out | tail -n 1
 
 # gofmt, then vet every build: original, PR #1 scalar, PR #1 SIMD, and wasm.

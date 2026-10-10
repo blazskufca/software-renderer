@@ -41,25 +41,12 @@ jobs:
   coverage:
     name: Coverage
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      code-quality: write
     steps:
-      # The PR head commit, not the merge commit, so covered lines map onto the diff.
       - uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - run: make cover
-      # Pushes to master set the baseline; on PRs github-code-quality[bot]
-      # comments the change. The action skips PRs from forks (read-only token).
-      - uses: actions/upload-code-coverage@v1
-        with:
-          file: coverage/coverage.xml
-          language: Go
-          label: code-coverage/go
 
   lint:
     name: Lint
