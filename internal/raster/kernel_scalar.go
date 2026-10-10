@@ -34,9 +34,8 @@ func wrapIndex(i, n int32, invN float32, pow2 bool) int32 {
 
 func fillRowsScalar(t *Target, s *triSetup, color uint32) {
 	iwX, lX := s.invW.dx, s.light.dx
-	edges := s.edges
 	for y := s.yMin; y <= s.yMax; y++ {
-		lo, hi := edges.next(s.xMin, s.xMax)
+		lo, hi := s.edges.next(s.xMin, s.xMax)
 		if lo > hi {
 			continue
 		}
@@ -65,9 +64,8 @@ func textureRowsScalar(t *Target, s *triSetup, tex *mesh.TextureData) {
 	pix := tex.PixelData
 	pow2 := isPow2(tex.Width) && isPow2(tex.Height)
 	iwX, uwX, vwX, lX := s.invW.dx, s.uw.dx, s.vw.dx, s.light.dx
-	edges := s.edges
 	for y := s.yMin; y <= s.yMax; y++ {
-		lo, hi := edges.next(s.xMin, s.xMax)
+		lo, hi := s.edges.next(s.xMin, s.xMax)
 		if lo > hi {
 			continue
 		}

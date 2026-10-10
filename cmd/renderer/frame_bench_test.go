@@ -91,9 +91,10 @@ func BenchmarkGeometry(b *testing.B) {
 }
 
 // BenchmarkRasterize measures drawing precomputed triangle lists. It includes
-// clearBuffers, because drawing the same frame again into full buffers would
-// fail the depth test almost everywhere and measure nothing; BenchmarkClear
-// measures the clear alone.
+// clearBuffers: drawing the same frame again into full buffers would fail the
+// depth test almost everywhere and measure nothing. There is no benchmark for
+// the clear alone, because the -tags simd build only resets what was drawn, so
+// a clear is only meaningful right after a frame.
 func BenchmarkRasterize(b *testing.B) {
 	for _, v := range benchViews {
 		for _, m := range benchModes {
@@ -112,15 +113,6 @@ func BenchmarkRasterize(b *testing.B) {
 				w.report(b)
 			})
 		}
-	}
-}
-
-// BenchmarkClear measures resetting the color and depth buffers.
-func BenchmarkClear(b *testing.B) {
-	r := newBenchRenderer(b, 0, config.RENDER_TEXTURED)
-	b.ReportAllocs()
-	for b.Loop() {
-		r.clearBuffers()
 	}
 }
 

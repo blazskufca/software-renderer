@@ -51,8 +51,8 @@ func TestSpanMatchesEdgeFunctions(t *testing.T) {
 	accepted := 0
 	for i := range tris {
 		tri := &tris[i]
-		s, ok := target.setup(tri)
-		if !ok {
+		var s triSetup
+		if !target.setup(tri, &s) {
 			continue
 		}
 		accepted++
@@ -185,8 +185,8 @@ func TestSharedEdgesCoveredOnce(t *testing.T) {
 		if edgeCross(int(a.X), int(a.Y), int(b.X), int(b.Y), int(c.X), int(c.Y)) < 0 {
 			tri.V[1], tri.V[2] = tri.V[2], tri.V[1]
 		}
-		s, ok := target.setup(&tri)
-		if !ok {
+		var s triSetup
+		if !target.setup(&tri, &s) {
 			return
 		}
 		edges := s.edges
