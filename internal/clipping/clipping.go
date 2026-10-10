@@ -25,6 +25,9 @@ type Plane[T utils.Numeric] struct {
 	normal vector.Vec3[T]
 }
 
+func (p *Plane[T]) Point() vector.Vec3[T]  { return p.point }
+func (p *Plane[T]) Normal() vector.Vec3[T] { return p.normal }
+
 // InitFrustumPlanes inits all 6 frustum planes with correct Point and normal
 // ///////////////////////////////////////////////////////////////////////////
 // Frustum planes are defined by a point and a normal vector
@@ -113,6 +116,17 @@ func (p *Polygon[T]) InsideAll(planes *[6]Plane[T]) bool {
 			if !(d > 0) {
 				return false
 			}
+		}
+	}
+	return true
+}
+
+// Inside reports whether v is strictly inside all six planes.
+func Inside[T utils.Numeric](v vector.Vec3[T], planes *[6]Plane[T]) bool {
+	for i := range planes {
+		d := v.Sub(planes[i].point).Dot(planes[i].normal)
+		if !(d > 0) {
+			return false
 		}
 	}
 	return true

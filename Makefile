@@ -65,13 +65,14 @@ test:
 	go test -tags simd ./...
 	GOEXPERIMENT=simd go test -tags simd ./...
 
-# internal/pipeline always uses the new rasterizer; SIMD=1 picks the SIMD kernels.
+# internal/pipeline always uses the new rasterizer; SIMD=1 picks the SIMD kernels
+# and the per-vertex geometry (otherwise it's master's per-face loop).
 bench:
-	$(GO_ENV) go test -run '^$$' -bench . -count 5 ./internal/pipeline/
+	$(GO_ENV) go test $(GO_TAGS) -run '^$$' -bench . -count 5 ./internal/pipeline/
 
 # wasm_exec aborts on a large environment, so run with a minimal one.
 bench-wasm:
-	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm $(GO_ENV) go test -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$$' -bench . -count 5 ./internal/pipeline/
+	env -i PATH="$$PATH" HOME="$$HOME" GOOS=js GOARCH=wasm $(GO_ENV) go test $(GO_TAGS) -exec="$(GOROOT)/lib/wasm/go_js_wasm_exec" -run '^$$' -bench . -count 5 ./internal/pipeline/
 
 clean:
 	rm -f renderer web/game.wasm "$(PGO_PROFILE)/cpu.prof" "$(PGO_PROFILE)/mem.prof"

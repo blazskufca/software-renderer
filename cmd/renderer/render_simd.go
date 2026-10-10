@@ -24,6 +24,7 @@ import (
 type rasterState[T utils.Numeric] struct {
 	target          *raster.Target
 	trianglesToDraw []raster.Triangle
+	geometry        pipeline.Params[T] // kept between frames for its scratch buffers
 }
 
 // drawTriangles dispatches on the mode itself, so the setters only record it.
@@ -92,18 +93,15 @@ func (r *Renderer[T]) update() {
 	// deltaTime is measured in Update, before input is processed.
 	r.trianglesToDraw = r.trianglesToDraw[:0]
 
-	view, dir := pipeline.ViewMatrix(r.camera.Position, r.camera.YawAngle, r.camera.PitchAngle)
-	r.camera.Direction = dir
-	params := pipeline.Params[T]{
-		View:       view,
-		Projection: r.projectionMatrix,
-		Frustum:    r.frustumPlanes,
-		Light:      r.light,
-		Shading:    r.shadingMode,
-		Cull:       r.cullMode,
-		Width:      r.config.WindowWidth,
-		Height:     r.config.WindowHeight,
-	}
+	params := &r.geometry
+	params.View, r.camera.Direction = pipeline.ViewMatrix(r.camera.Position, r.camera.YawAngle, r.camera.PitchAngle)
+	params.Projection = r.projectionMatrix
+	params.Frustum = r.frustumPlanes
+	params.Light = r.light
+	params.Shading = r.shadingMode
+	params.Cull = r.cullMode
+	params.Width = r.config.WindowWidth
+	params.Height = r.config.WindowHeight
 
 	for _, currentMesh := range r.meshes {
 		if currentMesh == nil {
@@ -115,7 +113,7 @@ func (r *Renderer[T]) update() {
 				panic(err)
 			}
 		}
-		r.trianglesToDraw = pipeline.AppendMesh(r.trianglesToDraw, currentMesh, &params)
+		r.trianglesToDraw = pipeline.AppendMesh(r.trianglesToDraw, currentMesh, params)
 	}
 }
 
