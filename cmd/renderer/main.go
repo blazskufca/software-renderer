@@ -190,8 +190,8 @@ func (r *Renderer[T]) moveDown() { r.camera.Position.Y -= 3 * T(r.deltaTime) }
 
 func (r *Renderer[T]) lookLeft()  { r.camera.YawAngle -= float32(1.5 * r.deltaTime) }
 func (r *Renderer[T]) lookRight() { r.camera.YawAngle += float32(1.5 * r.deltaTime) }
-func (r *Renderer[T]) lookUp()    { r.camera.PitchAngle += float32(1.5 * r.deltaTime); r.clampPitch() }
-func (r *Renderer[T]) lookDown()  { r.camera.PitchAngle -= float32(1.5 * r.deltaTime); r.clampPitch() }
+func (r *Renderer[T]) lookUp()    { r.camera.PitchAngle -= float32(1.5 * r.deltaTime); r.clampPitch() }
+func (r *Renderer[T]) lookDown()  { r.camera.PitchAngle += float32(1.5 * r.deltaTime); r.clampPitch() }
 
 func (r *Renderer[T]) clampPitch() {
 	if r.camera.PitchAngle > 1.55 {
@@ -200,6 +200,15 @@ func (r *Renderer[T]) clampPitch() {
 	if r.camera.PitchAngle < -1.55 {
 		r.camera.PitchAngle = -1.55
 	}
+}
+
+// applyMouseLook turns the camera by a relative mouse motion in pixels: moving
+// right turns right, moving up (dy < 0) looks up.
+func (r *Renderer[T]) applyMouseLook(dx, dy int) {
+	const sensitivity = 0.005
+	r.camera.YawAngle += float32(dx) * sensitivity
+	r.camera.PitchAngle += float32(dy) * sensitivity
+	r.clampPitch()
 }
 
 // processInput handles per-frame keyboard and mouse input. It returns true when
@@ -323,18 +332,9 @@ func (r *Renderer[T]) processInput() (quit bool) {
 		r.config.MouseWasCaptured = captured
 		return false
 	}
-	yaw := float64(mouseX - r.prevMouseX)
-	pitch := float64(mouseY - r.prevMouseY)
+	dx, dy := mouseX-r.prevMouseX, mouseY-r.prevMouseY
 	r.prevMouseX, r.prevMouseY = mouseX, mouseY
-	sensitivity := 0.005
-	r.camera.YawAngle += float32(yaw) * float32(sensitivity)
-	r.camera.PitchAngle -= float32(pitch) * float32(sensitivity)
-	if r.camera.PitchAngle > 1.55 {
-		r.camera.PitchAngle = 1.55
-	}
-	if r.camera.PitchAngle < -1.55 {
-		r.camera.PitchAngle = -1.55
-	}
+	r.applyMouseLook(dx, dy)
 	return false
 }
 

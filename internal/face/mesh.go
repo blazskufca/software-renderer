@@ -174,27 +174,24 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 			vtIdx := make([]int, n)
 			vnIdx := make([]int, n)
 			hasNormals := true
-			for i := 0; i < n; i++ {
+			for i := range n {
 				parts := strings.Split(fields[i+1], "/")
 				if len(parts) < 2 {
 					return Mesh[T]{}, fmt.Errorf("malformed face vertex %q: expected v/vt[/vn]", fields[i+1])
 				}
-				vi, err := strconv.Atoi(parts[0])
+				vIdx[i], err = resolveIndex(parts[0], len(v), "vertex")
 				if err != nil {
 					return Mesh[T]{}, err
 				}
-				vti, err := strconv.Atoi(parts[1])
+				vtIdx[i], err = resolveIndex(parts[1], len(vt), "texture vertex")
 				if err != nil {
 					return Mesh[T]{}, err
 				}
-				vIdx[i] = vi - 1
-				vtIdx[i] = vti - 1
 				if len(parts) >= 3 && parts[2] != "" {
-					vni, err := strconv.Atoi(parts[2])
+					vnIdx[i], err = resolveIndex(parts[2], len(vn), "vertex normal")
 					if err != nil {
 						return Mesh[T]{}, err
 					}
-					vnIdx[i] = vni - 1
 				} else {
 					hasNormals = false
 				}
@@ -217,8 +214,8 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 				fa = append(fa, f)
 			}
 		case "vt":
-			if len(fields[1:]) > 3 {
-				return Mesh[T]{}, fmt.Errorf("malformed texture vertex: got %d coordinates", len(fields[1:]))
+			if n := len(fields) - 1; n < 2 || n > 3 {
+				return Mesh[T]{}, fmt.Errorf("malformed texture vertex: got %d coordinates", n)
 			}
 			parsedU, err := strconv.ParseFloat(fields[1], 64)
 			if err != nil {
@@ -263,4 +260,21 @@ func NewMeshFromFile[T utils.Numeric](path string, Options ...Opts[T]) (Mesh[T],
 		}
 	}
 	return cMesh, nil
+}
+
+// resolveIndex converts a 1-based OBJ index, or a negative index counted back
+// from the last of the count elements defined so far, into a 0-based index.
+func resolveIndex(field string, count int, kind string) (int, error) {
+	idx, err := strconv.Atoi(field)
+	if err != nil {
+		return 0, err
+	}
+	resolved := idx - 1
+	if idx < 0 {
+		resolved = count + idx
+	}
+	if idx == 0 || resolved < 0 || resolved >= count {
+		return 0, fmt.Errorf("face %s index %d out of range (%d defined)", kind, idx, count)
+	}
+	return resolved, nil
 }
