@@ -119,3 +119,6 @@ assets
 
 # scripts/bench-compare.sh output
 bench-results/
+
+# Serena
+.serena/
