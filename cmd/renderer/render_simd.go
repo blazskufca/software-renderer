@@ -37,7 +37,7 @@ func (r *Renderer[T]) initBuffers() error {
 		return err
 	}
 	r.target = target
-	r.target.Clear(0xFF000000)
+	r.target.Clear(skyColor)
 	return nil
 }
 
@@ -79,7 +79,7 @@ func (r *Renderer[T]) renderColorBuffer(screen *ebiten.Image) {
 }
 
 func (r *Renderer[T]) clearBuffers() {
-	r.target.Clear(0xFF000000)
+	r.target.Clear(skyColor)
 }
 
 // drawPixel, drawFilledTriangle and drawTexturedTriangle write the target's

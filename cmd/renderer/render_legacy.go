@@ -96,7 +96,7 @@ func (r *Renderer[T]) drawTriangles() {
 
 func (r *Renderer[T]) clearBuffers() {
 	// Clear color buffer
-	r.clearColorBuffer(0xFF000000)
+	r.clearColorBuffer(skyColor)
 	// Clear Z-buffer
 	r.clearZBuffer(1)
 }
