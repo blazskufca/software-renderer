@@ -165,28 +165,36 @@ func (p *Polygon[T]) clipPolygonAgainstPlane(frustumPlanes *[6]Plane[T], plane i
 		// Product is only negative if there is a change in sign between the dot products
 		// I.e we went inside -> outside or outside -> inside
 		if (currentDot * previousDot) < 0 {
+			// Always interpolate from the inside vertex towards the outside one.
+			// Two triangles that share an edge walk it in opposite directions,
+			// and interpolating in walking order would round their intersection
+			// points differently, which opens cracks along the shared edge.
+			inVertex, outVertex := previousVertex, p.Vertices[i]
+			inTextCord, outTextCord := previousTextureCoord, currentTextCord
+			inLightIntensity, outLightIntensity := previousLightIntensity, currentLightIntensity
+			inDot, outDot := previousDot, currentDot
+			if currentDot > 0 {
+				inVertex, outVertex = outVertex, inVertex
+				inTextCord, outTextCord = outTextCord, inTextCord
+				inLightIntensity, outLightIntensity = outLightIntensity, inLightIntensity
+				inDot, outDot = outDot, inDot
+			}
 			//Calculate the factor T for linear interpolation equation -
-			// t = Q1 / (Q2 - Q1)
-			factorT := previousDot / (previousDot - currentDot)
+			// t = Q1 / (Q1 - Q2)
+			factorT := inDot / (inDot - outDot)
 			// Interpolation equation - I = Q1 + t(Q2-Q1)
-			// But Q1 and Q2 are vectors
-			// Instead of doing all of this we can use LERP here too
-			//intersectionPoint := p.vertices[i]
-			//intersectionPoint = intersectionPoint.sub(previousVertex) // Q1 - Q1
-			//intersectionPoint = intersectionPoint.multiply(factorT)   // t(Q1- Q2)
-			//intersectionPoint = intersectionPoint.add(previousVertex) // Q1 + t(Q1 - Q2)
 			intersectionPoint := vector.Vec3[T]{
-				X: utils.Lerp[T, T](previousVertex.X, p.Vertices[i].X, factorT),
-				Y: utils.Lerp[T, T](previousVertex.Y, p.Vertices[i].Y, factorT),
-				Z: utils.Lerp[T, T](previousVertex.Z, p.Vertices[i].Z, factorT),
+				X: utils.Lerp[T, T](inVertex.X, outVertex.X, factorT),
+				Y: utils.Lerp[T, T](inVertex.Y, outVertex.Y, factorT),
+				Z: utils.Lerp[T, T](inVertex.Z, outVertex.Z, factorT),
 			}
 
 			// We also do the linear interpolation on UV texure coordinates
 			interpolatedTextCord := texture.Tex2[T]{
-				U: utils.Lerp[T, T](previousTextureCoord.U, currentTextCord.U, factorT),
-				V: utils.Lerp[T, T](previousTextureCoord.V, currentTextCord.V, factorT),
+				U: utils.Lerp[T, T](inTextCord.U, outTextCord.U, factorT),
+				V: utils.Lerp[T, T](inTextCord.V, outTextCord.V, factorT),
 			}
-			interpolatedLightIntensity := utils.Lerp[T, T](previousLightIntensity, currentLightIntensity, factorT)
+			interpolatedLightIntensity := utils.Lerp[T, T](inLightIntensity, outLightIntensity, factorT)
 			insideVertices[numInsideVertices] = intersectionPoint
 			insideTextureCoordinates[numInsideVertices] = interpolatedTextCord
 			insideLightIntensities[numInsideVertices] = interpolatedLightIntensity
