@@ -16,7 +16,6 @@ import (
 	mesh "github.com/blazskufca/software-renderer/internal/face"
 	"github.com/blazskufca/software-renderer/internal/light"
 	"github.com/blazskufca/software-renderer/internal/matrix"
-	"github.com/blazskufca/software-renderer/internal/texture"
 	"github.com/blazskufca/software-renderer/internal/utils"
 	"github.com/blazskufca/software-renderer/internal/vector"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -104,31 +103,20 @@ func (r *Renderer[T]) Setup() error {
 	// Initialize the perspective projection matrix
 	m := matrix.Mat4MakePerspective[T, T](T(r.config.FovY), T(r.config.AspectRatioY), T(r.config.ZNear), T(r.config.ZFar))
 	r.projectionMatrix = m
-	clipping.InitFrustumPlanes[T, T, T](&r.frustumPlanes, T(r.config.FovX), T(r.config.FovY), T(r.config.ZNear), T(r.config.ZFar))
-	currentMesh, err := mesh.NewMeshFromFile[T]("assets/race.obj", func(m *mesh.Mesh[T]) error {
-		tw, th, pixels, err := texture.LoadTextureData("assets/colormap.png")
-		if err != nil {
-			return err
-		}
-		m.Texture = mesh.TextureData{PixelData: pixels, Width: tw, Height: th}
-		return nil
-	}, func(m *mesh.Mesh[T]) error {
-		m.Translation = vector.Vec3[T]{Z: 5}
-		return nil
-	}, func(m *mesh.Mesh[T]) error {
-		m.PerFrameMutations = append(m.PerFrameMutations, func(m *mesh.Mesh[T]) error {
-			rot := (math.Pi / 2) * r.deltaTime
-			m.Rotation.Y += T(rot)
-			return nil
-		})
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-	r.meshes = append(r.meshes, &currentMesh)
-	//currentMesh = newCubeMesh()
-	return nil
+	// Clip against a frustum slightly wider than the screen. A vertex clipped
+	// exactly on the right or bottom border can snap inwards and leave the
+	// last column or row of pixels uncovered.
+	clipFovX := guardBandFov(r.config.FovX, r.config.WindowWidth)
+	clipFovY := guardBandFov(r.config.FovY, r.config.WindowHeight)
+	clipping.InitFrustumPlanes[T, float64, T](&r.frustumPlanes, clipFovX, clipFovY, T(r.config.ZNear), T(r.config.ZFar))
+	return r.loadScene()
+}
+
+// guardBandFov widens a field of view that spans the given number of pixels by
+// guardBandPixels on each side.
+func guardBandFov(fov float64, pixels int) float64 {
+	const guardBandPixels = 2
+	return 2 * math.Atan(math.Tan(fov/2)*(1+2*guardBandPixels/float64(pixels)))
 }
 
 func (r *Renderer[T]) Draw(screen *ebiten.Image) {

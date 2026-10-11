@@ -130,8 +130,8 @@ func newBenchRenderer(b *testing.B, forward float32, mode config.RenderMode) *Re
 	r.setFillRaster(config.FILL_PINEDA)
 	r.shadingMode = config.SHADING_GOURAUD
 	r.cullMode = config.CULL_BACKFACE
-	r.deltaTime = 0 // the per-frame rotation in Setup is replaced by poseCar
-	r.update()      // computes camera.Direction
+	r.deltaTime = 0
+	r.update() // computes camera.Direction
 	r.camera.Position = r.camera.Position.Add(r.camera.Direction.Multiply(forward))
 	r.clearBuffers() // the legacy initBuffers leaves the z-buffer at 0
 	return r

@@ -3,6 +3,7 @@ package clipping
 import (
 	"math"
 	"math/rand/v2"
+	"slices"
 	"testing"
 
 	"github.com/blazskufca/software-renderer/internal/texture"
@@ -232,5 +233,35 @@ func TestInsideAllMeansClipIsNoop(t *testing.T) {
 	}
 	if inside < 1000 {
 		t.Fatalf("only %d triangles were inside the frustum, want >= 1000", inside)
+	}
+}
+
+// Two triangles that share an edge walk it in opposite directions. Both have to
+// clip it to the very same points, bit for bit, or the rasterizer leaves cracks
+// along the edge.
+func TestClipPolygonIgnoresWinding(t *testing.T) {
+	planes := frustum[float32]()
+	rng := rand.New(rand.NewPCG(3, 4))
+	var uvs [3]texture.Tex2[float32]
+	var lights [3]float32
+	for range 2000 {
+		tri := randomTriangle(rng, 40, -5, 120)
+		var forward, backward [3]vector.Vec4[float32]
+		for i, v := range tri {
+			forward[i] = vector.Vec4[float32]{X: float32(v.X), Y: float32(v.Y), Z: float32(v.Z), W: 1}
+			backward[2-i] = forward[i]
+		}
+		a := NewPolyFromTriangle(&forward, &uvs, &lights)
+		b := NewPolyFromTriangle(&backward, &uvs, &lights)
+		a.ClipPolygon(planes)
+		b.ClipPolygon(planes)
+		if a.NumberOfVertices != b.NumberOfVertices {
+			t.Fatalf("%v: clipped to %d vertices, reversed to %d", tri, a.NumberOfVertices, b.NumberOfVertices)
+		}
+		for _, v := range a.Vertices[:a.NumberOfVertices] {
+			if !slices.Contains(b.Vertices[:b.NumberOfVertices], v) {
+				t.Fatalf("%v: vertex %v is missing when the triangle is reversed", tri, v)
+			}
+		}
 	}
 }
