@@ -59,6 +59,8 @@ type Renderer[T utils.Numeric] struct {
 	fillRasterMode    config.FillRasterMode
 	shadingMode       config.ShadingMode
 	uiButtonsCache    []uiButton
+	colliders         []collider
+	fallSpeed         float64 // downwards
 }
 
 type RendererOpts[T utils.Numeric] func(*Renderer[T])
@@ -149,13 +151,21 @@ func (r *Renderer[T]) Layout(outsideWidth, outsideHeight int) (int, int) {
 // Camera movement primitives. These are shared by the keyboard handlers and the
 // on-screen navigation buttons so both paths behave identically. Each applies one
 // frame of motion scaled by deltaTime.
+// flatForward is the view direction along the ground.
+func (r *Renderer[T]) flatForward() vector.Vec3[T] {
+	forward := r.camera.Direction
+	forward.Y = 0
+	forward.Normalize()
+	return forward
+}
+
 func (r *Renderer[T]) moveForward() {
-	r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+	r.camera.ForwardVelocity = r.flatForward().Multiply(5 * T(r.deltaTime))
 	r.camera.Position = r.camera.Position.Add(r.camera.ForwardVelocity)
 }
 
 func (r *Renderer[T]) moveBackward() {
-	r.camera.ForwardVelocity = r.camera.Direction.Multiply(5 * T(r.deltaTime))
+	r.camera.ForwardVelocity = r.flatForward().Multiply(5 * T(r.deltaTime))
 	r.camera.Position = r.camera.Position.Sub(r.camera.ForwardVelocity)
 }
 
@@ -172,9 +182,6 @@ func (r *Renderer[T]) strafeRight() {
 	r.camera.RightVelocity = right.Multiply(5 * T(r.deltaTime))
 	r.camera.Position = r.camera.Position.Add(r.camera.RightVelocity)
 }
-
-func (r *Renderer[T]) moveUp()   { r.camera.Position.Y += 3 * T(r.deltaTime) }
-func (r *Renderer[T]) moveDown() { r.camera.Position.Y -= 3 * T(r.deltaTime) }
 
 func (r *Renderer[T]) lookLeft()  { r.camera.YawAngle -= float32(1.5 * r.deltaTime) }
 func (r *Renderer[T]) lookRight() { r.camera.YawAngle += float32(1.5 * r.deltaTime) }
@@ -290,11 +297,8 @@ func (r *Renderer[T]) processInput() (quit bool) {
 	}
 
 	// Camera movement (continuous while held)
-	if ebiten.IsKeyPressed(ebiten.KeyUp) {
-		r.moveUp()
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyDown) {
-		r.moveDown()
+	if ebiten.IsKeyPressed(ebiten.KeySpace) {
+		r.jump()
 	}
 	if ebiten.IsKeyPressed(ebiten.KeyA) {
 		r.strafeLeft()
@@ -341,6 +345,7 @@ func (r *Renderer[T]) Update() error {
 	if r.processInput() {
 		return ebiten.Termination
 	}
+	r.stepPlayer()
 	r.update()
 	return nil
 }

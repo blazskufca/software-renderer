@@ -108,6 +108,8 @@ func TestMoveControls(t *testing.T) {
 			r := newTestRenderer(t)
 			r.deltaTime = 0.5
 			dir := forward(r)
+			dir.Y = 0 // movement stays on the ground
+			dir.Normalize()
 			before := r.camera.Position
 			tc.action(r)
 			tc.check(t, dir, r.camera.Position.Sub(before))

@@ -135,7 +135,7 @@ func (r *Renderer[T]) loadScene() error {
 	if err != nil {
 		return err
 	}
-	r.meshes = append(r.meshes, &car)
+	r.addSolid(&car)
 
 	textures := make(map[string]mesh.TextureData)
 	loadKitTexture := func(model string) (mesh.TextureData, error) {
@@ -181,9 +181,17 @@ func (r *Renderer[T]) loadScene() error {
 		if p.flatten != 0 {
 			flattenMesh(&instance, p.flatten)
 		}
-		r.meshes = append(r.meshes, &instance)
+		r.addSolid(&instance)
 	}
 	return nil
+}
+
+// addSolid adds m to the scene along with its collider, if it has one.
+func (r *Renderer[T]) addSolid(m *mesh.Mesh[T]) {
+	r.meshes = append(r.meshes, m)
+	if c, ok := meshCollider(m); ok {
+		r.colliders = append(r.colliders, c)
+	}
 }
 
 // flattenMesh squashes m vertically by factor. The squash is baked into a copy
