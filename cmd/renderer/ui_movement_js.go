@@ -27,7 +27,7 @@ type holdButton struct {
 }
 
 // movementButtons lays out the on-screen navigation controls for touch devices:
-// a translation cross plus fly up/down on the bottom-left, and a look cross on
+// a translation cross plus jump on the bottom-left, and a look cross on
 // the bottom-right. Positions are recomputed each frame so they track resizes.
 func (r *Renderer[T]) movementButtons() []holdButton {
 	bw := r.scaledPixels(54)
@@ -40,11 +40,11 @@ func (r *Renderer[T]) movementButtons() []holdButton {
 	row1 := bottom - 2*bh - gap
 	row2 := bottom - bh
 
-	// Left translation cross + fly column.
+	// Left translation cross + jump column.
 	lc0 := margin
 	lc1 := margin + bw + gap
 	lc2 := margin + 2*(bw+gap)
-	flyCol := margin + 3*(bw+gap)
+	jumpCol := margin + 3*(bw+gap)
 
 	// Right look cross.
 	rc2 := r.config.WindowWidth - margin - bw
@@ -57,8 +57,7 @@ func (r *Renderer[T]) movementButtons() []holdButton {
 		{label: "Right", x: lc2, y: row1, w: bw, h: bh, action: r.strafeRight},
 		{label: "Back", x: lc1, y: row2, w: bw, h: bh, action: r.moveBackward},
 
-		{label: "Up", x: flyCol, y: row1, w: bw, h: bh, action: r.moveUp},
-		{label: "Down", x: flyCol, y: row2, w: bw, h: bh, action: r.moveDown},
+		{label: "Jump", x: jumpCol, y: row2, w: bw, h: bh, action: r.jump},
 
 		{label: "^", x: rc1, y: row0, w: bw, h: bh, action: r.lookUp},
 		{label: "<", x: rc0, y: row1, w: bw, h: bh, action: r.lookLeft},
